@@ -44,7 +44,7 @@
 
 # Testing & Validation
 
-- [ ] Write unit tests
+- [x] Write unit tests
 
 - [ ] Write integration tests
 
