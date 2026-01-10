@@ -1,0 +1,490 @@
+"""Pydantic models for HelixForge.
+
+This module defines all data schemas used across the system including
+ingestion results, metadata, alignments, fusion results, and insights.
+"""
+
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional, Union
+
+from pydantic import BaseModel, Field
+
+
+# Enums
+
+class SourceType(str, Enum):
+    """Supported data source types."""
+    CSV = "csv"
+    PARQUET = "parquet"
+    JSON = "json"
+    SQL = "sql"
+    REST = "rest"
+    XLSX = "xlsx"
+
+
+class DataType(str, Enum):
+    """Data types for fields."""
+    STRING = "string"
+    INTEGER = "integer"
+    FLOAT = "float"
+    DATETIME = "datetime"
+    BOOLEAN = "boolean"
+    OBJECT = "object"
+
+
+class SemanticType(str, Enum):
+    """Semantic types for fields."""
+    IDENTIFIER = "identifier"
+    METRIC = "metric"
+    CATEGORY = "category"
+    TIMESTAMP = "timestamp"
+    TEXT = "text"
+    UNKNOWN = "unknown"
+
+
+class AlignmentType(str, Enum):
+    """Types of field alignment."""
+    EXACT = "exact"
+    SYNONYM = "synonym"
+    RELATED = "related"
+    PARTIAL = "partial"
+    NONE = "none"
+
+
+class JoinStrategy(str, Enum):
+    """Join strategies for fusion."""
+    EXACT_KEY = "exact_key"
+    SEMANTIC_SIMILARITY = "semantic_similarity"
+    PROBABILISTIC = "probabilistic"
+    TEMPORAL = "temporal"
+
+
+class ImputationMethod(str, Enum):
+    """Methods for missing value imputation."""
+    MEAN = "mean"
+    MEDIAN = "median"
+    MODE = "mode"
+    KNN = "knn"
+    MODEL = "model"
+
+
+class DistributionType(str, Enum):
+    """Distribution types for numeric fields."""
+    NORMAL = "normal"
+    SKEWED = "skewed"
+    BIMODAL = "bimodal"
+    UNIFORM = "uniform"
+
+
+class FindingType(str, Enum):
+    """Types of insights/findings."""
+    CORRELATION = "correlation"
+    OUTLIER = "outlier"
+    CLUSTER = "cluster"
+    TREND = "trend"
+
+
+class Severity(str, Enum):
+    """Severity levels for findings."""
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class VisualizationType(str, Enum):
+    """Types of visualizations."""
+    CORRELATION_MATRIX = "correlation_matrix"
+    SCATTER = "scatter"
+    HISTOGRAM = "histogram"
+    BOXPLOT = "boxplot"
+    LINE = "line"
+    BAR = "bar"
+
+
+class ProvenanceOperation(str, Enum):
+    """Provenance operation types."""
+    INGEST = "ingest"
+    ALIGN = "align"
+    TRANSFORM = "transform"
+    IMPUTE = "impute"
+    FUSE = "fuse"
+
+
+# Layer 1: Data Ingestor
+
+class IngestResult(BaseModel):
+    """Result of data ingestion."""
+    dataset_id: str = Field(..., description="Unique identifier (UUID)")
+    source: str = Field(..., description="Origin path/URL")
+    source_type: SourceType = Field(..., description="Type of data source")
+    schema_fields: List[str] = Field(..., alias="schema", description="Column names in order")
+    dtypes: Dict[str, str] = Field(..., description="Column name to pandas dtype mapping")
+    row_count: int = Field(..., ge=0, description="Total rows")
+    sample_rows: int = Field(default=10, description="Rows in preview")
+    sample_data: List[Dict[str, Any]] = Field(default_factory=list, description="First N rows")
+    content_hash: str = Field(..., description="SHA-256 of normalized content")
+    encoding: Optional[str] = Field(default=None, description="Detected encoding")
+    ingested_at: datetime = Field(default_factory=datetime.utcnow)
+    storage_path: str = Field(..., description="Internal DataFrame location")
+
+    class Config:
+        populate_by_name = True
+
+
+class IngestorConfig(BaseModel):
+    """Configuration for Data Ingestor Agent."""
+    max_file_size_mb: int = Field(default=500)
+    sample_size: int = Field(default=10)
+    supported_formats: List[str] = Field(
+        default=["csv", "parquet", "json", "xlsx"]
+    )
+    encoding_detection_sample_bytes: int = Field(default=10000)
+    sql_timeout_seconds: int = Field(default=300)
+    rest_timeout_seconds: int = Field(default=60)
+    temp_storage_path: str = Field(default="./data/raw/")
+
+
+# Layer 2: Metadata Interpreter
+
+class FieldMetadata(BaseModel):
+    """Metadata for a single field."""
+    dataset_id: str
+    field_name: str = Field(..., description="Original column name")
+    semantic_label: str = Field(..., description="Inferred meaning (2-4 words)")
+    description: str = Field(..., description="Natural language description")
+    data_type: DataType
+    semantic_type: SemanticType
+    embedding: Optional[List[float]] = Field(default=None, description="Vector representation")
+    sample_values: List[Any] = Field(default_factory=list)
+    null_ratio: float = Field(..., ge=0, le=1)
+    unique_ratio: float = Field(..., ge=0, le=1)
+    confidence: float = Field(..., ge=0, le=1)
+    inferred_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class DatasetMetadata(BaseModel):
+    """Complete metadata for a dataset."""
+    dataset_id: str
+    fields: List[FieldMetadata]
+    dataset_description: str = Field(..., description="LLM-generated summary")
+    domain_tags: List[str] = Field(default_factory=list, description="Inferred domains")
+    ready_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InterpreterConfig(BaseModel):
+    """Configuration for Metadata Interpreter Agent."""
+    embedding_model: str = Field(default="text-embedding-3-large")
+    embedding_dimensions: int = Field(default=1536)
+    llm_model: str = Field(default="gpt-4o")
+    llm_temperature: float = Field(default=0.2)
+    max_sample_values: int = Field(default=20)
+    min_confidence_threshold: float = Field(default=0.5)
+    batch_size: int = Field(default=50)
+
+
+# Layer 3: Ontology Alignment
+
+class FieldAlignment(BaseModel):
+    """Alignment between two fields."""
+    alignment_id: str
+    source_dataset: str
+    source_field: str
+    target_dataset: str
+    target_field: str
+    similarity: float = Field(..., ge=0, le=1)
+    alignment_type: AlignmentType
+    transformation_hint: Optional[str] = Field(
+        default=None,
+        description="e.g., 'unit_conversion', 'type_cast'"
+    )
+    validated: bool = Field(default=False, description="Human-reviewed flag")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AlignmentResult(BaseModel):
+    """Result of alignment job."""
+    alignment_job_id: str
+    datasets_aligned: List[str]
+    alignments: List[FieldAlignment]
+    unmatched_fields: List[str] = Field(default_factory=list)
+    ontology_graph_uri: Optional[str] = Field(default=None)
+    completed_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AlignmentConfig(BaseModel):
+    """Configuration for Ontology Alignment Agent."""
+    similarity_threshold: float = Field(default=0.80)
+    exact_match_threshold: float = Field(default=0.98)
+    synonym_threshold: float = Field(default=0.90)
+    max_alignments_per_field: int = Field(default=3)
+    vector_store: str = Field(default="weaviate")
+    graph_store: str = Field(default="neo4j")
+    graph_uri: str = Field(default="neo4j://localhost:7687")
+    conflict_resolution: str = Field(default="highest_similarity")
+
+
+# Layer 4: Fusion
+
+class TransformationTemplate(BaseModel):
+    """Template for value transformation."""
+    template_id: str
+    name: str
+    source_unit: Optional[str] = None
+    target_unit: Optional[str] = None
+    formula: str = Field(..., description="Python expression using 'value'")
+    applicable_types: List[str] = Field(default_factory=list)
+
+
+class TransformationLog(BaseModel):
+    """Log of a transformation operation."""
+    field: str
+    operation: str = Field(..., description="unit_conversion | type_cast | rename | impute")
+    template_id: Optional[str] = None
+    source_value_sample: Optional[Any] = None
+    target_value_sample: Optional[Any] = None
+    records_affected: int
+
+
+class ImputationSummary(BaseModel):
+    """Summary of imputation operations."""
+    total_nulls_filled: int
+    fields_imputed: Dict[str, int] = Field(..., description="field -> count")
+    method_used: ImputationMethod
+    imputation_quality_score: Optional[float] = None
+
+
+class FusionResult(BaseModel):
+    """Result of fusion operation."""
+    fused_dataset_id: str
+    source_datasets: List[str]
+    record_count: int
+    field_count: int
+    merged_fields: List[str]
+    join_strategy: JoinStrategy
+    transformations_applied: List[TransformationLog] = Field(default_factory=list)
+    imputation_summary: Optional[ImputationSummary] = None
+    storage_path: str
+    fused_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FusionConfig(BaseModel):
+    """Configuration for Fusion Agent."""
+    default_join_strategy: JoinStrategy = Field(default=JoinStrategy.SEMANTIC_SIMILARITY)
+    similarity_join_threshold: float = Field(default=0.85)
+    probabilistic_match_threshold: float = Field(default=0.75)
+    temporal_tolerance_seconds: int = Field(default=3600)
+    imputation_method: ImputationMethod = Field(default=ImputationMethod.KNN)
+    knn_neighbors: int = Field(default=5)
+    max_null_ratio_for_inclusion: float = Field(default=0.5)
+    output_format: str = Field(default="parquet")
+    output_path: str = Field(default="./data/fused/")
+
+
+# Layer 5: Insight Generator
+
+class FieldStatistics(BaseModel):
+    """Statistics for a single field."""
+    mean: Optional[float] = None
+    std: Optional[float] = None
+    min: Optional[float] = None
+    max: Optional[float] = None
+    median: Optional[float] = None
+    q1: Optional[float] = None
+    q3: Optional[float] = None
+    null_count: int = 0
+    unique_count: int = 0
+    distribution_type: Optional[DistributionType] = None
+
+
+class DatasetStatistics(BaseModel):
+    """Statistics for entire dataset."""
+    record_count: int
+    field_count: int
+    field_stats: Dict[str, FieldStatistics]
+
+
+class CorrelationPair(BaseModel):
+    """Correlation between two fields."""
+    field_a: str
+    field_b: str
+    coefficient: float = Field(..., ge=-1, le=1)
+    p_value: float
+    significant: bool
+
+
+class CorrelationMatrix(BaseModel):
+    """Correlation analysis results."""
+    method: str = Field(default="pearson")
+    correlations: List[CorrelationPair]
+    significant_pairs: List[CorrelationPair] = Field(default_factory=list)
+
+
+class OutlierReport(BaseModel):
+    """Outlier detection results."""
+    method: str
+    total_outliers: int
+    outliers_by_field: Dict[str, int]
+    outlier_records: List[int] = Field(default_factory=list, description="Row indices")
+
+
+class ClusteringResult(BaseModel):
+    """Clustering analysis results."""
+    algorithm: str
+    n_clusters: int
+    cluster_sizes: List[int]
+    silhouette_score: Optional[float] = None
+    cluster_labels: List[int] = Field(default_factory=list)
+
+
+class Finding(BaseModel):
+    """A single insight finding."""
+    finding_id: str
+    type: FindingType
+    severity: Severity
+    description: str
+    supporting_data: Dict[str, Any] = Field(default_factory=dict)
+    visualization_ref: Optional[str] = None
+
+
+class Visualization(BaseModel):
+    """A generated visualization."""
+    viz_id: str
+    type: VisualizationType
+    title: str
+    file_path: str
+    format: str = Field(default="png")
+
+
+class InsightResult(BaseModel):
+    """Complete insight generation result."""
+    insight_id: str
+    fused_dataset_id: str
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    statistics: DatasetStatistics
+    correlations: Optional[CorrelationMatrix] = None
+    outliers: Optional[OutlierReport] = None
+    clusters: Optional[ClusteringResult] = None
+    narrative_summary: Optional[str] = None
+    key_findings: List[Finding] = Field(default_factory=list)
+    visualizations: List[Visualization] = Field(default_factory=list)
+    export_paths: Dict[str, str] = Field(default_factory=dict)
+
+
+class InsightConfig(BaseModel):
+    """Configuration for Insight Generator Agent."""
+    llm_model: str = Field(default="gpt-4o")
+    correlation_method: str = Field(default="pearson")
+    correlation_significance_threshold: float = Field(default=0.05)
+    outlier_method: str = Field(default="iqr")
+    outlier_iqr_multiplier: float = Field(default=1.5)
+    clustering_algorithm: str = Field(default="kmeans")
+    clustering_k_range: List[int] = Field(default=[2, 10])
+    visualization_format: str = Field(default="plotly")
+    visualization_dpi: int = Field(default=150)
+    export_formats: List[str] = Field(default=["html", "pdf"])
+    output_path: str = Field(default="./outputs/insights/")
+
+
+# Layer 6: Provenance Tracker
+
+class FieldOrigin(BaseModel):
+    """Origin of a field."""
+    source_file: str
+    source_column: str
+    source_column_index: int
+    dataset_id: str
+    ingested_at: datetime
+    content_hash: str
+
+
+class TransformationRecord(BaseModel):
+    """Record of a transformation step."""
+    step_id: str
+    operation: ProvenanceOperation
+    input_fields: List[str]
+    output_field: str
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    agent: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    confidence_delta: float = Field(default=0.0)
+
+
+class ProvenanceTrace(BaseModel):
+    """Complete provenance trace for a field."""
+    trace_id: str
+    field: str
+    fused_dataset_id: str
+    lineage_depth: int
+    origins: List[FieldOrigin]
+    transformations: List[TransformationRecord]
+    confidence: float = Field(..., ge=0, le=1)
+    traced_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ProvenanceReport(BaseModel):
+    """Complete provenance report for a dataset."""
+    report_id: str
+    fused_dataset_id: str
+    total_fields: int
+    fields_with_complete_provenance: int
+    coverage_percentage: float
+    traces: List[ProvenanceTrace]
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    format: str = Field(default="json")
+
+
+class ProvenanceConfig(BaseModel):
+    """Configuration for Provenance Tracker Agent."""
+    graph_store: str = Field(default="neo4j")
+    graph_uri: str = Field(default="neo4j://localhost:7687")
+    graph_user: str = Field(default="neo4j")
+    graph_password: str = Field(default="")
+    json_ld_context: str = Field(default="https://www.w3.org/ns/prov")
+    report_format: str = Field(default="html")
+    report_output_path: str = Field(default="./outputs/provenance/")
+    confidence_decay_per_step: float = Field(default=0.02)
+
+
+# API Request/Response Models
+
+class AlignmentRequest(BaseModel):
+    """Request to align datasets."""
+    dataset_ids: List[str] = Field(..., min_length=2)
+    confidence_threshold: Optional[float] = None
+    include_partial_matches: bool = Field(default=True)
+
+
+class FusionRequest(BaseModel):
+    """Request to fuse datasets."""
+    alignment_job_id: str
+    join_strategy: Optional[JoinStrategy] = None
+    imputation_method: Optional[ImputationMethod] = None
+    output_format: str = Field(default="parquet")
+
+
+class InsightRequest(BaseModel):
+    """Request to generate insights."""
+    fused_dataset_id: str
+    analysis_types: List[str] = Field(
+        default=["correlations", "outliers", "clusters"]
+    )
+    generate_visualizations: bool = Field(default=True)
+    generate_narrative: bool = Field(default=True)
+    export_formats: List[str] = Field(default=["html", "pdf", "json"])
+
+
+class HealthStatus(BaseModel):
+    """System health status."""
+    status: str = Field(default="healthy")
+    database: bool = Field(default=True)
+    vector_store: bool = Field(default=True)
+    graph_store: bool = Field(default=True)
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ErrorResponse(BaseModel):
+    """Standard error response."""
+    error: str
+    detail: Optional[str] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
