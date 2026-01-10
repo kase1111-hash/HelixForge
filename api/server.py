@@ -71,14 +71,71 @@ async def lifespan(app: FastAPI):
         app_state["provenance"].close()
 
 
+# OpenAPI tags metadata
+tags_metadata = [
+    {
+        "name": "Datasets",
+        "description": "Upload, manage, and query datasets. Supports CSV, JSON, Parquet, Excel, and REST API sources.",
+    },
+    {
+        "name": "Alignment",
+        "description": "Align schemas across multiple datasets using semantic similarity and ontology matching.",
+    },
+    {
+        "name": "Fusion",
+        "description": "Merge aligned datasets using various join strategies with transformation and imputation.",
+    },
+    {
+        "name": "Insights",
+        "description": "Generate statistical analysis, correlations, clustering, and visualizations from fused data.",
+    },
+    {
+        "name": "Provenance",
+        "description": "Track and query data lineage throughout the pipeline from source to insight.",
+    },
+]
+
 # Create FastAPI application
 app = FastAPI(
     title="HelixForge API",
-    description="Cross-Dataset Insight Synthesizer - Transform heterogeneous datasets into unified insights",
+    description="""
+# HelixForge - Cross-Dataset Insight Synthesizer
+
+Transform heterogeneous datasets into unified insights through intelligent data fusion.
+
+## Features
+
+- **Multi-format Ingestion**: CSV, JSON, Parquet, Excel, SQL databases, REST APIs
+- **Semantic Schema Alignment**: AI-powered field matching across datasets
+- **Intelligent Fusion**: Multiple join strategies with conflict resolution
+- **Automated Insights**: Statistical analysis, correlations, clustering
+- **Full Provenance**: Track data lineage from source to insight
+
+## Quick Start
+
+1. Upload datasets via `/datasets/upload`
+2. Align schemas via `/align/datasets`
+3. Fuse data via `/fuse/execute`
+4. Generate insights via `/insights/generate`
+5. Query provenance via `/trace/lineage`
+
+## Authentication
+
+Set the `X-API-Key` header for authenticated endpoints (when enabled).
+    """,
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
+    openapi_tags=tags_metadata,
+    contact={
+        "name": "HelixForge Support",
+        "url": "https://github.com/helixforge/helixforge",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
 )
 
 # Configure CORS
@@ -111,6 +168,18 @@ async def health_check():
         database=True,  # Would check actual connections in production
         vector_store=True,
         graph_store=True
+    )
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus metrics endpoint."""
+    from fastapi.responses import Response
+    from utils.metrics import get_metrics, get_metrics_content_type
+
+    return Response(
+        content=get_metrics(),
+        media_type=get_metrics_content_type()
     )
 
 

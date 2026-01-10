@@ -30,6 +30,13 @@ python_files = "test_*.py"
 python_functions = "test_*"
 addopts = "-v --tb=short"
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "unit: Unit tests for individual components",
+    "integration: Integration tests for component interactions",
+    "acceptance: Acceptance tests for user stories",
+    "regression: Regression tests to prevent bugs from reoccurring",
+    "slow: Tests that take a long time to run",
+]
 
 [tool.coverage.run]
 source = ["agents", "api", "models", "utils"]

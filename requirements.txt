@@ -49,7 +49,16 @@ openpyxl>=3.1
 weasyprint>=60
 pyld>=2.0
 
+# Error Tracking / Monitoring
+sentry-sdk>=1.39
+prometheus-client>=0.19
+
 # Testing
 pytest>=7.4
 pytest-asyncio>=0.23
 httpx>=0.26
+hypothesis>=6.92
+pytest-cov>=4.1
+
+# Performance Testing
+locust>=2.20
