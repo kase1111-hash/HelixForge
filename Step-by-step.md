@@ -54,11 +54,11 @@
 
 - [ ] Conduct performance testing (load, stress)
 
-- [ ] Perform security checks (input, encryption, tokens)
+- [x] Perform security checks (input, encryption, tokens)
 
-- [ ] Perform exploit testing (SQLi, XSS, overflow)
+- [x] Perform exploit testing (SQLi, XSS, overflow)
 
-- [ ] Check for backdoors & unauthorized access
+- [x] Check for backdoors & unauthorized access
 
 - [x] Run static analysis (lint, type check, vuln scan)
 
@@ -104,6 +104,6 @@
 
 - [x] Write changelog
 
-- [ ] Perform compliance review (GDPR, HIPAA, etc.)
+- [x] Perform compliance review (GDPR, HIPAA, etc.)
 
-- [ ] Tag release & archive build artifacts
+- [x] Tag release & archive build artifacts
