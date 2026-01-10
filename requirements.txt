@@ -51,6 +51,7 @@ pyld>=2.0
 
 # Error Tracking / Monitoring
 sentry-sdk>=1.39
+prometheus-client>=0.19
 
 # Testing
 pytest>=7.4
