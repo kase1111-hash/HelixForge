@@ -1,0 +1,114 @@
+# HelixForge Production Configuration
+# Use: HELIXFORGE_ENV=production
+
+environment: production
+
+# API Settings
+api:
+  host: "0.0.0.0"
+  port: 8000
+  debug: false
+  reload: false
+  workers: 4
+  cors_origins:
+    - "https://helixforge.example.com"
+    - "https://app.helixforge.example.com"
+
+# LLM Configuration
+llm:
+  provider: "openai"
+  model: "gpt-4o"
+  embedding_model: "text-embedding-3-large"
+  temperature: 0.1
+  max_tokens: 4000
+  timeout: 120
+  retry_attempts: 3
+  retry_delay: 1
+
+# Vector Store
+vector_store:
+  provider: "weaviate"
+  host: "weaviate-prod"
+  port: 8080
+  grpc_port: 50051
+  scheme: "http"
+  replication_factor: 3
+
+# Graph Store (Neo4j)
+graph_store:
+  uri: "bolt://neo4j-prod:7687"
+  user: "neo4j"
+  # Password MUST be set via GRAPH_PASSWORD env var
+  password: "${GRAPH_PASSWORD}"
+  database: "helixforge"
+  max_connection_lifetime: 3600
+  max_connection_pool_size: 50
+
+# Database (PostgreSQL)
+database:
+  host: "postgres-prod"
+  port: 5432
+  name: "helixforge"
+  user: "helixforge"
+  # Password MUST be set via DB_PASSWORD env var
+  password: "${DB_PASSWORD}"
+  pool_size: 20
+  max_overflow: 10
+  echo_sql: false
+  ssl_mode: "require"
+
+# Processing
+processing:
+  batch_size: 1000
+  max_workers: 8
+  chunk_size: 2000
+
+# Fusion
+fusion:
+  similarity_threshold: 0.8
+  confidence_decay: 0.05
+  max_alignment_candidates: 100
+
+# Insights
+insights:
+  correlation_threshold: 0.7
+  outlier_iqr_multiplier: 1.5
+  max_clusters: 15
+  visualization_dpi: 200
+
+# Logging
+logging:
+  level: "WARNING"
+  format: "json"
+  include_timestamp: true
+  log_to_file: true
+  log_file: "/var/log/helixforge/app.log"
+  max_log_size_mb: 100
+  backup_count: 10
+
+# Storage
+storage:
+  data_dir: "/data/helixforge"
+  output_dir: "/data/helixforge/outputs"
+  temp_dir: "/tmp/helixforge"
+  max_file_size_mb: 1000
+
+# Error Tracking
+error_tracking:
+  enabled: true
+  sentry_dsn: "${SENTRY_DSN}"
+  environment: "production"
+  traces_sample_rate: 0.1
+  profiles_sample_rate: 0.1
+
+# Security
+security:
+  api_key_required: true
+  rate_limit_per_minute: 100
+  max_request_size_mb: 50
+
+# Monitoring
+monitoring:
+  prometheus_enabled: true
+  prometheus_port: 9090
+  health_check_interval: 30

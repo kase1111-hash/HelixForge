@@ -32,7 +32,7 @@
 
 - [x] Add general logging
 
-- [ ] Add error logging (Sentry, ELK, etc.)
+- [x] Add error logging (Sentry, ELK, etc.)
 
 - [x] Secure configuration (.env or secrets manager)
 
@@ -70,7 +70,7 @@
 
 - [x] Set up CI/CD pipeline (GitHub Actions, Jenkins, etc.)
 
-- [ ] Configure environment-specific settings (dev/stage/prod)
+- [x] Configure environment-specific settings (dev/stage/prod)
 
 - [x] Build distributable packages (Dockerfile, zip, exe)
 
@@ -94,15 +94,15 @@
 
 - [ ] Run penetration test (internal or 3rd-party)
 
-- [ ] Document APIs (Swagger / Postman)
+- [x] Document APIs (Swagger / Postman)
 
 - [ ] Create architecture & data flow diagrams
 
 - [ ] Finalize user documentation (README, FAQ, troubleshooting)
 
-- [ ] Add license file
+- [x] Add license file
 
-- [ ] Write changelog
+- [x] Write changelog
 
 - [ ] Perform compliance review (GDPR, HIPAA, etc.)
 
