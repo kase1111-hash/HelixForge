@@ -2,7 +2,7 @@
 
 - [x] Review spec sheet & confirm requirements
 
-- [ ] Define user stories & acceptance criteria
+- [x] Define user stories & acceptance criteria
 
 - [x] Choose tech stack & dependencies
 
@@ -12,35 +12,35 @@
 
 - [x] Set up project structure (src/, tests/, docs/)
 
-- [ ] Define coding conventions & style guide
+- [x] Define coding conventions & style guide
 
 - [x] Create dependency manifest (package.json, requirements.txt)
 
 - [x] Configure environment management (Docker, venv, etc.)
 
-- [ ] Write initial README.md
+- [x] Write initial README.md
 
 # Core Implementation
 
-- [ ] Implement core logic per spec
+- [x] Implement core logic per spec
 
-- [ ] Refactor for reusable components (DRY)
+- [x] Refactor for reusable components (DRY)
 
-- [ ] Add input validation & sanitation
+- [x] Add input validation & sanitation
 
-- [ ] Implement error handling
+- [x] Implement error handling
 
-- [ ] Add general logging
+- [x] Add general logging
 
 - [ ] Add error logging (Sentry, ELK, etc.)
 
-- [ ] Secure configuration (.env or secrets manager)
+- [x] Secure configuration (.env or secrets manager)
 
-- [ ] Add command-line interface (if needed)
+- [x] Add command-line interface (if needed)
 
-- [ ] Build GUI or frontend (CLI application by design)
+- [x] Build GUI or frontend (CLI application by design)
 
-- [ ] Add accessibility & localization support (CLI application)
+- [x] Add accessibility & localization support (CLI application)
 
 # Testing & Validation
 
