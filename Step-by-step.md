@@ -2,7 +2,7 @@
 
 - [x] Review spec sheet & confirm requirements
 
-- [ ] Define user stories & acceptance criteria
+- [x] Define user stories & acceptance criteria
 
 - [x] Choose tech stack & dependencies
 
@@ -12,13 +12,13 @@
 
 - [x] Set up project structure (src/, tests/, docs/)
 
-- [ ] Define coding conventions & style guide
+- [x] Define coding conventions & style guide
 
 - [x] Create dependency manifest (package.json, requirements.txt)
 
 - [x] Configure environment management (Docker, venv, etc.)
 
-- [ ] Write initial README.md
+- [x] Write initial README.md
 
 # Core Implementation
 
