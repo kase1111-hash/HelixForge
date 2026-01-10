@@ -88,10 +88,10 @@ class DataIngestorAgent(BaseAgent):
             if handler is None:
                 raise IngestionError(f"Unsupported source type: {source_type}")
 
-            df, metadata = handler(source, **kwargs)
+            # Extract dataset_id before passing kwargs to handler
+            dataset_id = kwargs.pop("dataset_id", None) or str(uuid.uuid4())
 
-            # Generate dataset ID
-            dataset_id = kwargs.get("dataset_id") or str(uuid.uuid4())
+            df, metadata = handler(source, **kwargs)
 
             # Compute content hash
             content_hash = self._compute_hash(df)
