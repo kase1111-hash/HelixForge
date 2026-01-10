@@ -5,11 +5,8 @@ LLM-powered inference and embedding generation.
 """
 
 import json
-import uuid
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 
 from agents.base_agent import BaseAgent
@@ -20,7 +17,7 @@ from models.schemas import (
     InterpreterConfig,
     SemanticType,
 )
-from utils.embeddings import batch_embed, get_embedding
+from utils.embeddings import batch_embed
 
 
 class MetadataInterpreterAgent(BaseAgent):

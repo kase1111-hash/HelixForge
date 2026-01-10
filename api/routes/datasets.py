@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 

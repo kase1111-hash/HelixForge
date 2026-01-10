@@ -7,7 +7,6 @@ pipeline, building provenance graphs and generating reports.
 import json
 import os
 import uuid
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from agents.base_agent import BaseAgent
@@ -307,7 +306,7 @@ class ProvenanceTrackerAgent(BaseAgent):
         Returns:
             Graph structure as dictionary.
         """
-        graph = {
+        graph: Dict[str, List[Dict[str, Any]]] = {
             "nodes": [],
             "edges": []
         }
@@ -363,7 +362,9 @@ class ProvenanceTrackerAgent(BaseAgent):
                     if self._config.graph_password else None
                 )
 
-            with self._graph_driver.session() as session:
+            driver = self._graph_driver
+            assert driver is not None
+            with driver.session() as session:
                 if record_type == "ingestion":
                     for origin in trace.origins:
                         session.run(
