@@ -57,3 +57,8 @@ prometheus-client>=0.19
 pytest>=7.4
 pytest-asyncio>=0.23
 httpx>=0.26
+hypothesis>=6.92
+pytest-cov>=4.1
+
+# Performance Testing
+locust>=2.20
