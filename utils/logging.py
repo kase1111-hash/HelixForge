@@ -129,7 +129,7 @@ def log_event(
     # Flatten payload into extra for structured logging
     for key, value in payload.items():
         if isinstance(value, (str, int, float, bool, type(None))):
-            extra[key] = value
+            extra[key] = str(value) if value is not None else ""
         else:
             extra[key] = str(value)
 
@@ -179,7 +179,7 @@ class LoggerAdapter(logging.LoggerAdapter):
             extra["agent"] = agent
         super().__init__(logger, extra)
 
-    def process(self, msg: str, kwargs: Dict) -> tuple:
+    def process(self, msg: str, kwargs):  # type: ignore[override]
         # Merge extra into kwargs
         extra = kwargs.get("extra", {})
         extra.update(self.extra)

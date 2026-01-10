@@ -5,10 +5,8 @@ different datasets using embedding similarity and graph construction.
 """
 
 import uuid
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 
 from agents.base_agent import BaseAgent
 from models.schemas import (

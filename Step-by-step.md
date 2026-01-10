@@ -46,7 +46,7 @@
 
 - [x] Write unit tests
 
-- [ ] Write integration tests
+- [x] Write integration tests
 
 - [ ] Write system/acceptance tests
 
@@ -60,7 +60,7 @@
 
 - [ ] Check for backdoors & unauthorized access
 
-- [ ] Run static analysis (lint, type check, vuln scan)
+- [x] Run static analysis (lint, type check, vuln scan)
 
 - [ ] Run dynamic analysis (fuzzing, runtime behavior)
 

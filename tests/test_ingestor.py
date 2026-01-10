@@ -1,10 +1,8 @@
 """Unit tests for Data Ingestor Agent."""
 
 import os
-import tempfile
 from unittest.mock import MagicMock, patch
 
-import pandas as pd
 import pytest
 
 from agents.data_ingestor_agent import DataIngestorAgent, IngestionError

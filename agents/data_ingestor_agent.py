@@ -7,8 +7,7 @@ CSV, Parquet, JSON files, SQL databases, and REST APIs.
 import hashlib
 import os
 import uuid
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 import chardet
 import pandas as pd
@@ -18,7 +17,7 @@ from sqlalchemy import create_engine, text
 
 from agents.base_agent import BaseAgent
 from models.schemas import IngestorConfig, IngestResult, SourceType
-from utils.validation import ValidationError, validate_file_path, validate_url
+from utils.validation import validate_file_path, validate_url
 
 
 class IngestionError(Exception):
@@ -76,7 +75,7 @@ class DataIngestorAgent(BaseAgent):
             source_type_enum = SourceType(source_type.lower())
 
             # Route to appropriate handler
-            handlers = {
+            handlers: Dict[SourceType, Any] = {
                 SourceType.CSV: self._ingest_csv,
                 SourceType.PARQUET: self._ingest_parquet,
                 SourceType.JSON: self._ingest_json,
@@ -454,7 +453,7 @@ class DataIngestorAgent(BaseAgent):
         counts = {d: sample.count(d) for d in delimiters}
 
         # Return the most common delimiter
-        best_delimiter = max(counts, key=counts.get)
+        best_delimiter = max(counts, key=lambda k: counts[k])
 
         self.logger.debug(f"Detected delimiter: {repr(best_delimiter)}")
 

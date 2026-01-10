@@ -1,8 +1,6 @@
 """Unit tests for utility modules."""
 
 import math
-import os
-import tempfile
 
 import pytest
 

@@ -1,0 +1,44 @@
+[project]
+name = "helixforge"
+version = "1.0.0"
+description = "Cross-Dataset Insight Synthesizer"
+requires-python = ">=3.10"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.ruff.isort]
+known-first-party = ["agents", "api", "models", "utils"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = false
+warn_unused_ignores = false
+disallow_untyped_defs = false
+ignore_missing_imports = true
+check_untyped_defs = false
+no_implicit_optional = false
+disable_error_code = ["import-untyped"]
+exclude = ["tests/", "venv/", ".venv/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-v --tb=short"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["agents", "api", "models", "utils"]
+omit = ["tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

@@ -1,6 +1,6 @@
 """Unit tests for Metadata Interpreter Agent."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -114,7 +114,7 @@ class TestMetadataInterpreterAgent:
 
     def test_infer_domain_tags_healthcare(self, agent):
         """Test domain tag inference for healthcare data."""
-        from models.schemas import FieldMetadata, DataType, SemanticType
+        from models.schemas import FieldMetadata, DataType
 
         fields = [
             FieldMetadata(
@@ -146,7 +146,7 @@ class TestMetadataInterpreterAgent:
 
     def test_infer_domain_tags_finance(self, agent):
         """Test domain tag inference for finance data."""
-        from models.schemas import FieldMetadata, DataType, SemanticType
+        from models.schemas import FieldMetadata, DataType
 
         fields = [
             FieldMetadata(
