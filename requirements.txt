@@ -1,0 +1,55 @@
+# HelixForge - Cross-Dataset Insight Synthesizer
+# Python Requirements
+
+# Core
+pandas>=2.0
+numpy>=1.24
+pyarrow>=14.0
+
+# API
+fastapi>=0.109
+uvicorn>=0.27
+pydantic>=2.5
+
+# Database
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+neo4j>=5.0
+
+# Vector Store
+weaviate-client>=4.0
+
+# LLM / Embeddings
+openai>=1.0
+tiktoken>=0.5
+
+# NLP
+spacy>=3.7
+
+# ML / Stats
+scikit-learn>=1.3
+scipy>=1.11
+
+# Visualization
+matplotlib>=3.8
+plotly>=5.18
+seaborn>=0.13
+
+# Utilities
+requests>=2.31
+chardet>=5.0
+fuzzywuzzy>=0.18
+python-Levenshtein>=0.21
+networkx>=3.0
+jinja2>=3.1
+pyyaml>=6.0
+openpyxl>=3.1
+
+# Report Generation
+weasyprint>=60
+pyld>=2.0
+
+# Testing
+pytest>=7.4
+pytest-asyncio>=0.23
+httpx>=0.26

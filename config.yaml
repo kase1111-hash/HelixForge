@@ -1,0 +1,62 @@
+# HelixForge Configuration
+
+# LLM Settings
+llm:
+  provider: "openai"
+  model: "gpt-4o"
+  embedding_model: "text-embedding-3-large"
+  temperature: 0.2
+  max_tokens: 4096
+
+# Vector Store
+vector_store:
+  provider: "weaviate"
+  url: "http://localhost:8080"
+  api_key: "${WEAVIATE_API_KEY}"
+
+# Graph Store (Ontology + Provenance)
+graph_store:
+  provider: "neo4j"
+  uri: "neo4j://localhost:7687"
+  user: "neo4j"
+  password: "${NEO4J_PASSWORD}"
+
+# Relational Database (Metadata + Jobs)
+database:
+  url: "postgresql://helixforge:${DB_PASSWORD}@localhost:5432/helixforge"
+  pool_size: 10
+
+# Processing Settings
+processing:
+  confidence_threshold: 0.80
+  max_file_size_mb: 500
+  temp_storage_path: "./data/temp/"
+
+# Fusion Settings
+fusion:
+  default_join_strategy: "semantic_similarity"
+  similarity_threshold: 0.85
+  imputation_method: "knn"
+
+# Insight Settings
+insights:
+  correlation_significance: 0.05
+  outlier_method: "iqr"
+  visualization_format: "plotly"
+
+# Output Settings
+output:
+  artifact_dir: "./outputs/"
+  report_format: "html"
+
+# API Settings
+api:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins: ["http://localhost:3000"]
+
+# Logging
+logging:
+  level: "INFO"
+  format: "json"
+  output: "stdout"
