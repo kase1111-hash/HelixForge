@@ -245,8 +245,13 @@ mypy .
 ## Documentation
 
 - [SPEC.md](SPEC.md) - Technical specification
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System architecture
 - [docs/USER_STORIES.md](docs/USER_STORIES.md) - User stories and acceptance criteria
 - [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md) - Coding conventions
+- [docs/SECURITY.md](docs/SECURITY.md) - Security documentation
+- [docs/FAQ.md](docs/FAQ.md) - Frequently asked questions
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
+- [CHANGELOG.md](CHANGELOG.md) - Version history
 
 ## Roadmap
 
@@ -255,6 +260,10 @@ mypy .
 - [ ] Interactive query agent
 - [ ] Real-time streaming (Kafka/Kinesis)
 - [ ] Federated mode for cross-organization alignment
+
+## Contributing
+
+Contributions are welcome! Please read our [Contributing Guidelines](CONTRIBUTING.md) before submitting a pull request.
 
 ---
 
