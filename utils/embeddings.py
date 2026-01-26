@@ -52,7 +52,8 @@ def get_embedding(
 def batch_embed(
     texts: List[str],
     model: str = "text-embedding-3-large",
-    batch_size: int = 100
+    batch_size: int = 100,
+    embedding_dimensions: int = 3072
 ) -> List[List[float]]:
     """Generate embeddings for multiple texts.
 
@@ -60,9 +61,11 @@ def batch_embed(
         texts: List of texts to embed.
         model: Embedding model to use.
         batch_size: Maximum texts per API call.
+        embedding_dimensions: Dimension of embeddings (for zero vectors on empty texts).
 
     Returns:
-        List of embedding vectors.
+        List of embedding vectors (same length as input texts).
+        Empty/whitespace-only texts will have zero vectors.
 
     Raises:
         ValueError: If texts list is empty.
@@ -71,22 +74,43 @@ def batch_embed(
         raise ValueError("Texts list cannot be empty")
 
     client = _get_openai_client()
-    all_embeddings = []
 
-    # Process in batches
-    for i in range(0, len(texts), batch_size):
-        batch = [t.strip() for t in texts[i:i + batch_size] if t and t.strip()]
-        if not batch:
-            continue
+    # Initialize results with None placeholders to maintain index alignment
+    all_embeddings: List[Optional[List[float]]] = [None] * len(texts)
+
+    # Track which indices have valid (non-empty) texts
+    valid_indices = []
+    valid_texts = []
+    for i, text in enumerate(texts):
+        stripped = text.strip() if text else ""
+        if stripped:
+            valid_indices.append(i)
+            valid_texts.append(stripped)
+
+    # Process valid texts in batches
+    for batch_start in range(0, len(valid_texts), batch_size):
+        batch_end = min(batch_start + batch_size, len(valid_texts))
+        batch = valid_texts[batch_start:batch_end]
+        batch_indices = valid_indices[batch_start:batch_end]
 
         response = client.embeddings.create(
             input=batch,
             model=model
         )
 
-        # Sort by index to maintain order
+        # Sort by index to maintain order within batch
         sorted_data = sorted(response.data, key=lambda x: x.index)
-        all_embeddings.extend([d.embedding for d in sorted_data])
+
+        # Map embeddings back to original indices
+        for j, data in enumerate(sorted_data):
+            original_idx = batch_indices[j]
+            all_embeddings[original_idx] = data.embedding
+
+    # Fill remaining None entries with zero vectors (for empty/whitespace texts)
+    zero_vector = [0.0] * embedding_dimensions
+    for i in range(len(all_embeddings)):
+        if all_embeddings[i] is None:
+            all_embeddings[i] = zero_vector
 
     return all_embeddings
 

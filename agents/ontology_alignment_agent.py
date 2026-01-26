@@ -75,6 +75,14 @@ class OntologyAlignmentAgent(BaseAgent):
                         f"{meta_a.dataset_id} and {meta_b.dataset_id}"
                     )
 
+            # Warn if no alignments were found
+            if not all_alignments:
+                self.logger.warning(
+                    f"No alignments found between {len(metadata_list)} datasets. "
+                    "This may indicate datasets have no semantically similar fields, "
+                    "or the similarity threshold ({self._config.similarity_threshold}) is too high."
+                )
+
             # Find unmatched fields
             matched_fields = set()
             for a in all_alignments:

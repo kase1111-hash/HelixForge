@@ -363,7 +363,8 @@ class ProvenanceTrackerAgent(BaseAgent):
                 )
 
             driver = self._graph_driver
-            assert driver is not None
+            if driver is None:
+                raise RuntimeError("Failed to initialize Neo4j graph driver")
             with driver.session() as session:
                 if record_type == "ingestion":
                     for origin in trace.origins:
