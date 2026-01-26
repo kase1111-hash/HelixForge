@@ -163,11 +163,72 @@ async def health_check():
     """Health check endpoint."""
     from models.schemas import HealthStatus
 
+    # Check database connection
+    database_healthy = False
+    try:
+        config = app_state.get("config", {})
+        db_config = config.get("database", {})
+        if db_config.get("uri"):
+            import sqlalchemy
+            engine = sqlalchemy.create_engine(db_config["uri"])
+            with engine.connect() as conn:
+                conn.execute(sqlalchemy.text("SELECT 1"))
+            database_healthy = True
+        else:
+            # No database configured, consider healthy
+            database_healthy = True
+    except Exception:
+        database_healthy = False
+
+    # Check vector store (Weaviate) connection
+    vector_store_healthy = False
+    try:
+        config = app_state.get("config", {})
+        vector_config = config.get("vector_store", {})
+        if vector_config.get("url"):
+            import urllib.request
+            req = urllib.request.Request(
+                f"{vector_config['url']}/v1/.well-known/ready",
+                method="GET"
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                vector_store_healthy = resp.status == 200
+        else:
+            # No vector store configured, consider healthy
+            vector_store_healthy = True
+    except Exception:
+        vector_store_healthy = False
+
+    # Check graph store (Neo4j) connection
+    graph_store_healthy = False
+    try:
+        config = app_state.get("config", {})
+        graph_config = config.get("provenance", {})
+        if graph_config.get("graph_uri"):
+            from neo4j import GraphDatabase
+            driver = GraphDatabase.driver(
+                graph_config["graph_uri"],
+                auth=(graph_config.get("graph_user"), graph_config.get("graph_password"))
+                if graph_config.get("graph_password") else None
+            )
+            driver.verify_connectivity()
+            driver.close()
+            graph_store_healthy = True
+        else:
+            # No graph store configured, consider healthy
+            graph_store_healthy = True
+    except Exception:
+        graph_store_healthy = False
+
+    # Determine overall status
+    all_healthy = database_healthy and vector_store_healthy and graph_store_healthy
+    status = "healthy" if all_healthy else "degraded"
+
     return HealthStatus(
-        status="healthy",
-        database=True,  # Would check actual connections in production
-        vector_store=True,
-        graph_store=True
+        status=status,
+        database=database_healthy,
+        vector_store=vector_store_healthy,
+        graph_store=graph_store_healthy
     )
 
 
