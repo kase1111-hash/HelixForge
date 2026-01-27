@@ -7,6 +7,7 @@ pipeline, building provenance graphs and generating reports.
 import json
 import os
 import uuid
+from html import escape as html_escape
 from typing import Any, Dict, List, Optional
 
 from agents.base_agent import BaseAgent
@@ -467,18 +468,18 @@ class ProvenanceTrackerAgent(BaseAgent):
         traces_html = ""
         for trace in report.traces:
             origins_html = "\n".join([
-                f"<li>{o.source_file} : {o.source_column} (col {o.source_column_index})</li>"
+                f"<li>{html_escape(o.source_file)} : {html_escape(o.source_column)} (col {o.source_column_index})</li>"
                 for o in trace.origins
             ])
 
             transforms_html = "\n".join([
-                f"<li>{t.operation.value}: {t.input_fields} -> {t.output_field}</li>"
+                f"<li>{html_escape(t.operation.value)}: {html_escape(str(t.input_fields))} -> {html_escape(t.output_field)}</li>"
                 for t in trace.transformations
             ])
 
             traces_html += f"""
             <div class="trace">
-                <h3>{trace.field}</h3>
+                <h3>{html_escape(trace.field)}</h3>
                 <p><strong>Confidence:</strong> {trace.confidence:.2%}</p>
                 <p><strong>Lineage Depth:</strong> {trace.lineage_depth}</p>
                 <h4>Origins</h4>
@@ -491,7 +492,7 @@ class ProvenanceTrackerAgent(BaseAgent):
         return f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>Provenance Report - {report.fused_dataset_id}</title>
+    <title>Provenance Report - {html_escape(report.fused_dataset_id)}</title>
     <style>
         body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }}
         h1 {{ color: #333; }}
@@ -502,7 +503,7 @@ class ProvenanceTrackerAgent(BaseAgent):
 </head>
 <body>
     <h1>Provenance Report</h1>
-    <p>Dataset: {report.fused_dataset_id}</p>
+    <p>Dataset: {html_escape(report.fused_dataset_id)}</p>
 
     <div class="summary">
         <h2>Summary</h2>

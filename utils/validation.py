@@ -38,10 +38,15 @@ def validate_file_path(
     if not path:
         raise ValidationError("File path cannot be empty")
 
+    # Check for path traversal attempts BEFORE normalization
+    # This prevents bypass via paths like "foo/../../../etc/passwd"
+    if ".." in path:
+        raise ValidationError("Path traversal not allowed")
+
     # Normalize path
     path = os.path.normpath(path)
 
-    # Check for path traversal attempts
+    # Double-check after normalization (belt and suspenders)
     if ".." in path:
         raise ValidationError("Path traversal not allowed")
 
