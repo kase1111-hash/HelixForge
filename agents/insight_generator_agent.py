@@ -7,6 +7,7 @@ outlier detection, clustering, visualizations, and narrative summaries.
 import json
 import os
 import uuid
+from html import escape as html_escape
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -666,19 +667,19 @@ Use specific numbers and field names. Avoid jargon."""
             HTML string.
         """
         findings_html = "\n".join([
-            f"<li><strong>{f.type.value}</strong>: {f.description}</li>"
+            f"<li><strong>{html_escape(f.type.value)}</strong>: {html_escape(f.description)}</li>"
             for f in findings
         ])
 
         viz_html = "\n".join([
-            f'<img src="{v.file_path}" alt="{v.title}" style="max-width: 100%;">'
+            f'<img src="{html_escape(v.file_path)}" alt="{html_escape(v.title)}" style="max-width: 100%;">'
             for v in visualizations
         ])
 
         return f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>Insight Report - {dataset_id}</title>
+    <title>Insight Report - {html_escape(dataset_id)}</title>
     <style>
         body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }}
         h1 {{ color: #333; }}
@@ -689,7 +690,7 @@ Use specific numbers and field names. Avoid jargon."""
     </style>
 </head>
 <body>
-    <h1>Insight Report: {dataset_id}</h1>
+    <h1>Insight Report: {html_escape(dataset_id)}</h1>
 
     <div class="section">
         <h2>Overview</h2>
@@ -713,7 +714,7 @@ Use specific numbers and field names. Avoid jargon."""
 
     <div class="section">
         <h2>Narrative Summary</h2>
-        <p>{narrative or 'No narrative generated.'}</p>
+        <p>{html_escape(narrative) if narrative else 'No narrative generated.'}</p>
     </div>
 
     <div class="section">

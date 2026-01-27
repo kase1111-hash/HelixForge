@@ -20,14 +20,26 @@ logger = get_logger(__name__)
 # Global state
 app_state: Dict = {}
 
+# Cached configuration (singleton pattern to ensure consistent config)
+_cached_config: dict = None
+
 
 def load_config() -> dict:
-    """Load configuration from config.yaml."""
+    """Load configuration from config.yaml.
+
+    Uses cached config to ensure consistent configuration across the application.
+    """
+    global _cached_config
+    if _cached_config is not None:
+        return _cached_config
+
     config_path = os.environ.get("HELIXFORGE_CONFIG", "config.yaml")
     if os.path.exists(config_path):
         with open(config_path) as f:
-            return yaml.safe_load(f)
-    return {}
+            _cached_config = yaml.safe_load(f) or {}
+    else:
+        _cached_config = {}
+    return _cached_config
 
 
 @asynccontextmanager
@@ -141,6 +153,14 @@ Set the `X-API-Key` header for authenticated endpoints (when enabled).
 # Configure CORS
 config = load_config()
 cors_origins = config.get("api", {}).get("cors_origins", ["*"])
+
+# Warn about wildcard CORS in production
+if "*" in cors_origins:
+    logger.warning(
+        "CORS is configured with wildcard origin ('*'). "
+        "This is not recommended for production deployments. "
+        "Configure specific allowed origins in config.yaml under api.cors_origins."
+    )
 
 app.add_middleware(
     CORSMiddleware,

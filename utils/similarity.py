@@ -142,7 +142,8 @@ def record_similarity(
             elif val_a == 0 and val_b == 0:
                 sim = 1.0
             else:
-                max_val = max(abs(val_a), abs(val_b))
+                # Use epsilon to prevent division by zero for very small values
+                max_val = max(abs(val_a), abs(val_b), 1e-10)
                 sim = 1.0 - min(abs(val_a - val_b) / max_val, 1.0)
         elif isinstance(val_a, bool) and isinstance(val_b, bool):
             sim = 1.0 if val_a == val_b else 0.0

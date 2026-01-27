@@ -79,8 +79,8 @@ class OntologyAlignmentAgent(BaseAgent):
             if not all_alignments:
                 self.logger.warning(
                     f"No alignments found between {len(metadata_list)} datasets. "
-                    "This may indicate datasets have no semantically similar fields, "
-                    "or the similarity threshold ({self._config.similarity_threshold}) is too high."
+                    f"This may indicate datasets have no semantically similar fields, "
+                    f"or the similarity threshold ({self._config.similarity_threshold}) is too high."
                 )
 
             # Find unmatched fields
