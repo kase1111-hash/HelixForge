@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 
 from models.schemas import ErrorResponse, FusionRequest, FusionResult
+from utils.errors import HelixForgeError
 
 router = APIRouter()
 
@@ -73,10 +74,12 @@ async def fuse_datasets(request: FusionRequest):
 
         return result
 
+    except HelixForgeError:
+        raise  # Handled by global exception handler
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error during fusion: {type(e).__name__}: {e}"
         )
 
 

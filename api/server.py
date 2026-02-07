@@ -6,50 +6,53 @@ with all routes, middleware, and dependencies.
 
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Dict
 
-import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from api.routes import alignment, datasets, fusion
+from utils.config import load_config, reset_config
+from utils.errors import ConfigurationError, HelixForgeError
 from utils.logging import get_logger
+from utils.validation import ValidationError
 
 logger = get_logger(__name__)
 
 # Global state
 app_state: Dict = {}
 
-# Cached configuration (singleton pattern to ensure consistent config)
-_cached_config: dict = None
-
-
-def load_config() -> dict:
-    """Load configuration from config.yaml.
-
-    Uses cached config to ensure consistent configuration across the application.
-    """
-    global _cached_config
-    if _cached_config is not None:
-        return _cached_config
-
-    config_path = os.environ.get("HELIXFORGE_CONFIG", "config.yaml")
-    if os.path.exists(config_path):
-        with open(config_path) as f:
-            _cached_config = yaml.safe_load(f) or {}
-    else:
-        _cached_config = {}
-    return _cached_config
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan manager."""
+    """Application lifespan manager.
+
+    Validates configuration on startup and fails fast with
+    clear error messages if anything is wrong.
+    """
     # Startup
     logger.info("Starting HelixForge API server")
 
-    config = load_config()
+    # Reset config cache so we pick up fresh values
+    reset_config()
+
+    try:
+        config = load_config()
+    except ConfigurationError as e:
+        logger.error(f"Configuration error: {e.message}. {e.detail}")
+        raise SystemExit(f"FATAL: {e.message}. {e.detail}") from e
+
     app_state["config"] = config
+
+    # Check OPENAI_API_KEY if using OpenAI provider
+    llm_provider = config.get("llm", {}).get("provider", "openai")
+    if llm_provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
+        logger.warning(
+            "OPENAI_API_KEY not set. LLM features will fail. "
+            "Set the environment variable or switch to a different provider."
+        )
 
     # Initialize agents
     from agents.data_ingestor_agent import DataIngestorAgent
@@ -127,11 +130,44 @@ Transform heterogeneous datasets into unified insights through intelligent data 
     },
 )
 
-# Configure CORS
+
+# ------------------------------------------------------------------ #
+#  Structured exception handlers                                       #
+# ------------------------------------------------------------------ #
+
+@app.exception_handler(HelixForgeError)
+async def helixforge_error_handler(request: Request, exc: HelixForgeError):
+    """Return structured JSON for all HelixForge domain errors."""
+    return JSONResponse(
+        status_code=400,
+        content={
+            "error": type(exc).__name__,
+            "detail": exc.message,
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+    )
+
+
+@app.exception_handler(ValidationError)
+async def validation_error_handler(request: Request, exc: ValidationError):
+    """Return structured JSON for validation errors."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "ValidationError",
+            "detail": str(exc),
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+    )
+
+
+# ------------------------------------------------------------------ #
+#  CORS                                                                #
+# ------------------------------------------------------------------ #
+
 config = load_config()
 cors_origins = config.get("api", {}).get("cors_origins", ["*"])
 
-# Warn about wildcard CORS in production
 if "*" in cors_origins:
     logger.warning(
         "CORS is configured with wildcard origin ('*'). "
@@ -155,9 +191,26 @@ app.include_router(fusion.router, prefix="/fuse", tags=["Fusion"])
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint.
+
+    Verifies the application is running and reports on
+    critical dependency availability.
+    """
+    checks = {"api": "ok"}
+
+    # Check OpenAI API key availability
+    if os.environ.get("OPENAI_API_KEY"):
+        checks["openai_key"] = "configured"
+    else:
+        checks["openai_key"] = "missing"
+
+    # Check agent initialization
+    checks["agents"] = "ok" if app_state.get("ingestor") else "not_initialized"
+
+    all_ok = checks["agents"] == "ok"
     return {
-        "status": "healthy",
+        "status": "healthy" if all_ok else "degraded",
+        "checks": checks,
     }
 
 

@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 
 from models.schemas import DatasetMetadata, ErrorResponse, IngestResult
+from utils.errors import HelixForgeError
 
 router = APIRouter()
 
@@ -72,10 +73,12 @@ async def upload_dataset(
 
         return result
 
+    except HelixForgeError:
+        raise  # Handled by global exception handler
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error during ingestion: {type(e).__name__}: {e}"
         )
 
 
