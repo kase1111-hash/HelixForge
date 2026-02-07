@@ -4,6 +4,7 @@ Usage:
     python cli.py describe <file> [--format json|table] [--provider mock|openai]
     python cli.py align <file1> <file2> [--format json|table] [--provider mock|openai]
     python cli.py fuse <file1> <file2> [--key id] [--strategy auto|exact|semantic] [--output fused.csv]
+    python cli.py analyze <file> [--stats] [--correlations] [--outliers] [--output report.json]
     python cli.py ingest <file> [--format json|table]
 """
 
@@ -375,6 +376,132 @@ def cmd_fuse(args):
         print()
 
 
+def cmd_analyze(args):
+    """Analyze a dataset file and print statistical insights."""
+    file_path = args.file
+    output_format = args.format
+
+    # Ingest the file
+    ingestor_config = {
+        "ingestor": {
+            "max_file_size_mb": 500,
+            "sample_size": 10,
+            "temp_storage_path": "/tmp/helixforge",
+        }
+    }
+    ingestor = DataIngestorAgent(config=ingestor_config)
+
+    try:
+        result = ingestor.ingest_file(file_path)
+    except Exception as e:
+        print(f"Error ingesting {file_path}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    df = ingestor.get_dataframe(result.dataset_id)
+
+    # Determine which analyses to run
+    # If none specified, run all
+    any_flag = args.stats or args.correlations or args.outliers
+    include_stats = args.stats if any_flag else True
+    include_correlations = args.correlations if any_flag else True
+    include_outliers = args.outliers if any_flag else True
+
+    # Run analysis
+    from agents.insight_agent import InsightAgent
+
+    insight_config = {"insight": {}}
+    agent = InsightAgent(config=insight_config)
+    insight_result = agent.process(
+        df,
+        source_description=file_path,
+        include_stats=include_stats,
+        include_correlations=include_correlations,
+        include_outliers=include_outliers,
+    )
+
+    # Output
+    if args.output:
+        import os
+        report = {
+            "analysis_id": insight_result.analysis_id,
+            "source": file_path,
+            "record_count": insight_result.record_count,
+            "field_count": insight_result.field_count,
+            "statistics": [s.model_dump() for s in insight_result.statistics],
+            "correlations": [c.model_dump() for c in insight_result.correlations],
+            "outliers": [o.model_dump() for o in insight_result.outliers],
+        }
+        with open(args.output, "w") as f:
+            json.dump(report, f, indent=2, default=str)
+        print(f"Report written to {args.output}")
+        return
+
+    if output_format == "json":
+        output = {
+            "analysis_id": insight_result.analysis_id,
+            "source": file_path,
+            "record_count": insight_result.record_count,
+            "field_count": insight_result.field_count,
+            "statistics": [s.model_dump() for s in insight_result.statistics],
+            "correlations": [c.model_dump() for c in insight_result.correlations],
+            "outliers": [o.model_dump() for o in insight_result.outliers],
+        }
+        print(json.dumps(output, indent=2, default=str))
+    else:
+        _print_analyze_table(insight_result, file_path)
+
+
+def _print_analyze_table(result, source):
+    """Print analysis result as a formatted table."""
+    print(f"\n  Analysis: {source}")
+    print(f"  {result.record_count} rows, {result.field_count} columns")
+    print()
+
+    if result.statistics:
+        print("  Descriptive Statistics")
+        print(f"  {'─' * 70}")
+        headers = ["Field", "Count", "Mean", "Std", "Min", "Q1", "Median", "Q3", "Max"]
+        widths = [15, 6, 10, 10, 10, 10, 10, 10, 10]
+        header_line = "  ".join(h.ljust(w) for h, w in zip(headers, widths))
+        print(f"  {header_line}")
+
+        for s in result.statistics:
+            row = [
+                s.field_name[:15],
+                str(s.count),
+                f"{s.mean:.2f}",
+                f"{s.std:.2f}",
+                f"{s.min:.2f}",
+                f"{s.q1:.2f}",
+                f"{s.median:.2f}",
+                f"{s.q3:.2f}",
+                f"{s.max:.2f}",
+            ]
+            row_line = "  ".join(val.ljust(w) for val, w in zip(row, widths))
+            print(f"  {row_line}")
+        print()
+
+    if result.correlations:
+        print("  Significant Correlations")
+        print(f"  {'─' * 50}")
+        for c in result.correlations:
+            direction = "+" if c.coefficient > 0 else "-"
+            print(f"  {c.field_a:>20} <-> {c.field_b:<20} r={c.coefficient:+.4f} ({direction})")
+        print()
+
+    if result.outliers:
+        print("  Outliers Detected")
+        print(f"  {'─' * 50}")
+        for o in result.outliers:
+            print(f"  {o.field_name:>20}: {o.outlier_count} outlier(s) "
+                  f"[{o.lower_bound:.2f}, {o.upper_bound:.2f}]")
+        print()
+
+    if not result.statistics and not result.correlations and not result.outliers:
+        print("  No numeric columns found for analysis.")
+        print()
+
+
 def cmd_ingest(args):
     """Ingest a dataset and print a JSON summary."""
     file_path = args.file
@@ -489,6 +616,32 @@ def main():
         help="LLM provider for embeddings (default: mock)"
     )
 
+    # analyze command
+    analyze_parser = subparsers.add_parser(
+        "analyze", help="Analyze a dataset with statistics, correlations, outliers"
+    )
+    analyze_parser.add_argument("file", help="Path to the dataset file")
+    analyze_parser.add_argument(
+        "--stats", action="store_true",
+        help="Include descriptive statistics"
+    )
+    analyze_parser.add_argument(
+        "--correlations", action="store_true",
+        help="Include correlation analysis"
+    )
+    analyze_parser.add_argument(
+        "--outliers", action="store_true",
+        help="Include outlier detection"
+    )
+    analyze_parser.add_argument(
+        "--format", choices=["json", "table"], default="table",
+        help="Output format (default: table)"
+    )
+    analyze_parser.add_argument(
+        "--output", default=None,
+        help="Write JSON report to file instead of stdout"
+    )
+
     # describe command
     describe_parser = subparsers.add_parser(
         "describe", help="Describe a dataset's fields with semantic labels"
@@ -517,6 +670,8 @@ def main():
         cmd_align(args)
     elif args.command == "fuse":
         cmd_fuse(args)
+    elif args.command == "analyze":
+        cmd_analyze(args)
 
 
 if __name__ == "__main__":
