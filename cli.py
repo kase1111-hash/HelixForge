@@ -400,23 +400,40 @@ def cmd_analyze(args):
     df = ingestor.get_dataframe(result.dataset_id)
 
     # Determine which analyses to run
-    # If none specified, run all
+    # If none specified, run all (except clustering/narrative which are opt-in)
     any_flag = args.stats or args.correlations or args.outliers
     include_stats = args.stats if any_flag else True
     include_correlations = args.correlations if any_flag else True
     include_outliers = args.outliers if any_flag else True
+    include_clustering = getattr(args, "clustering", False)
+    include_narrative = getattr(args, "narrative", False)
+    n_clusters = getattr(args, "n_clusters", 3)
+
+    # Set up provider for narrative generation
+    provider = None
+    if include_narrative:
+        provider_name = getattr(args, "provider", "mock")
+        if provider_name == "openai":
+            from utils.llm import OpenAIProvider
+            provider = OpenAIProvider()
+        else:
+            from utils.llm import MockProvider
+            provider = MockProvider(dimensions=1536)
 
     # Run analysis
     from agents.insight_agent import InsightAgent
 
     insight_config = {"insight": {}}
-    agent = InsightAgent(config=insight_config)
+    agent = InsightAgent(config=insight_config, provider=provider)
     insight_result = agent.process(
         df,
         source_description=file_path,
         include_stats=include_stats,
         include_correlations=include_correlations,
         include_outliers=include_outliers,
+        include_clustering=include_clustering,
+        include_narrative=include_narrative,
+        n_clusters=n_clusters,
     )
 
     # Output
@@ -430,6 +447,8 @@ def cmd_analyze(args):
             "statistics": [s.model_dump() for s in insight_result.statistics],
             "correlations": [c.model_dump() for c in insight_result.correlations],
             "outliers": [o.model_dump() for o in insight_result.outliers],
+            "clustering": insight_result.clustering.model_dump() if insight_result.clustering else None,
+            "narrative": insight_result.narrative,
         }
         with open(args.output, "w") as f:
             json.dump(report, f, indent=2, default=str)
@@ -445,6 +464,8 @@ def cmd_analyze(args):
             "statistics": [s.model_dump() for s in insight_result.statistics],
             "correlations": [c.model_dump() for c in insight_result.correlations],
             "outliers": [o.model_dump() for o in insight_result.outliers],
+            "clustering": insight_result.clustering.model_dump() if insight_result.clustering else None,
+            "narrative": insight_result.narrative,
         }
         print(json.dumps(output, indent=2, default=str))
     else:
@@ -495,6 +516,24 @@ def _print_analyze_table(result, source):
         for o in result.outliers:
             print(f"  {o.field_name:>20}: {o.outlier_count} outlier(s) "
                   f"[{o.lower_bound:.2f}, {o.upper_bound:.2f}]")
+        print()
+
+    if result.clustering:
+        cl = result.clustering
+        print("  Clustering")
+        print(f"  {'─' * 50}")
+        print(f"  K = {cl.n_clusters}, Silhouette = {cl.silhouette_score:.4f}" if cl.silhouette_score else f"  K = {cl.n_clusters}")
+        print(f"  Features: {', '.join(cl.features_used)}")
+        from collections import Counter
+        counts = Counter(cl.labels)
+        for cid in sorted(counts):
+            print(f"    Cluster {cid}: {counts[cid]} records")
+        print()
+
+    if result.narrative:
+        print("  Narrative Summary")
+        print(f"  {'─' * 50}")
+        print(f"  {result.narrative}")
         print()
 
     if not result.statistics and not result.correlations and not result.outliers:
@@ -636,6 +675,22 @@ def main():
     analyze_parser.add_argument(
         "--format", choices=["json", "table"], default="table",
         help="Output format (default: table)"
+    )
+    analyze_parser.add_argument(
+        "--clustering", action="store_true",
+        help="Include K-means clustering"
+    )
+    analyze_parser.add_argument(
+        "--n-clusters", type=int, default=3,
+        help="Number of clusters for K-means (default: 3)"
+    )
+    analyze_parser.add_argument(
+        "--narrative", action="store_true",
+        help="Generate LLM narrative summary"
+    )
+    analyze_parser.add_argument(
+        "--provider", choices=["mock", "openai"], default="mock",
+        help="LLM provider for narrative (default: mock)"
     )
     analyze_parser.add_argument(
         "--output", default=None,

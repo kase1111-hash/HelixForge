@@ -265,7 +265,7 @@ class FusionAgent(BaseAgent):
                 )
                 merged = self._semantic_join(df_left, df_right, alignments)
             else:
-                merged = self._semantic_join(df_left, df_right, alignments)
+                merged = self._probabilistic_join(df_left, df_right, alignments)
 
         elif strategy == JoinStrategy.TEMPORAL:
             if not self._config.experimental_strategies:
@@ -559,6 +559,107 @@ class FusionAgent(BaseAgent):
                         renamed[reverse_map[col]] = val
                     else:
                         renamed[col] = val
+                merged_rows.append(renamed)
+
+        return pd.DataFrame(merged_rows)
+
+    # ------------------------------------------------------------------ #
+    #  Probabilistic join (experimental)                                   #
+    # ------------------------------------------------------------------ #
+
+    def _probabilistic_join(
+        self,
+        df_left: pd.DataFrame,
+        df_right: pd.DataFrame,
+        alignments: List[FieldAlignment],
+    ) -> pd.DataFrame:
+        """Join records using weighted multi-column fuzzy matching.
+
+        For each left row, finds the best-matching right row by computing
+        a weighted similarity across all aligned column pairs. Numeric
+        columns use normalized distance; string columns use fuzzy ratio.
+        """
+        from fuzzywuzzy import fuzz
+
+        # Build field mapping
+        field_map = {}
+        for a in alignments:
+            if a.source_field in df_left.columns and a.target_field in df_right.columns:
+                field_map[a.source_field] = a.target_field
+
+        if not field_map:
+            return pd.concat([df_left, df_right], ignore_index=True)
+
+        threshold = self._config.probabilistic_match_threshold
+        weight = 1.0 / len(field_map) if field_map else 1.0
+
+        matched_indices = []
+        used_right = set()
+
+        for i in range(len(df_left)):
+            left_row = df_left.iloc[i]
+            best_match = None
+            best_score = threshold
+
+            for j in range(len(df_right)):
+                if j in used_right:
+                    continue
+                right_row = df_right.iloc[j]
+
+                score = 0.0
+                for left_col, right_col in field_map.items():
+                    lv = left_row[left_col]
+                    rv = right_row[right_col]
+
+                    if pd.isna(lv) or pd.isna(rv):
+                        continue
+
+                    # Numeric comparison: 1 - normalized distance
+                    try:
+                        lf = float(lv)
+                        rf = float(rv)
+                        max_val = max(abs(lf), abs(rf), 1e-9)
+                        col_sim = 1.0 - abs(lf - rf) / max_val
+                    except (ValueError, TypeError):
+                        # String comparison: fuzzy ratio
+                        col_sim = fuzz.ratio(str(lv), str(rv)) / 100.0
+
+                    score += col_sim * weight
+
+                if score > best_score:
+                    best_score = score
+                    best_match = j
+
+            matched_indices.append((i, best_match))
+            if best_match is not None:
+                used_right.add(best_match)
+
+        # Build merged DataFrame
+        merged_rows = []
+        reverse_map = {v: k for k, v in field_map.items()}
+
+        for left_idx, right_idx in matched_indices:
+            left_row = df_left.iloc[left_idx].to_dict()
+            if right_idx is not None:
+                right_row = df_right.iloc[right_idx].to_dict()
+                renamed_right = {}
+                for col, val in right_row.items():
+                    renamed_right[reverse_map.get(col, col)] = val
+                merged = {**renamed_right, **{k: v for k, v in left_row.items() if pd.notna(v)}}
+                for k, v in renamed_right.items():
+                    if k in merged and pd.isna(merged[k]) and pd.notna(v):
+                        merged[k] = v
+                merged_rows.append(merged)
+            else:
+                merged_rows.append(left_row)
+
+        # Add unmatched right rows
+        for j in range(len(df_right)):
+            if j not in used_right:
+                right_row = df_right.iloc[j].to_dict()
+                renamed = {}
+                for col, val in right_row.items():
+                    renamed[reverse_map.get(col, col)] = val
                 merged_rows.append(renamed)
 
         return pd.DataFrame(merged_rows)

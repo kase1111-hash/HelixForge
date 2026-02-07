@@ -309,6 +309,16 @@ class OutlierInfo(BaseModel):
     outlier_indices: List[int] = Field(default_factory=list)
 
 
+class ClusterInfo(BaseModel):
+    """K-means clustering results."""
+    n_clusters: int
+    labels: List[int] = Field(default_factory=list, description="Cluster assignment per row")
+    centroids: List[List[float]] = Field(default_factory=list, description="Centroid coordinates")
+    silhouette_score: Optional[float] = Field(default=None, description="Mean silhouette score (-1 to 1)")
+    inertia: float = Field(default=0.0, description="Sum of squared distances to closest centroid")
+    features_used: List[str] = Field(default_factory=list, description="Columns used for clustering")
+
+
 class InsightResult(BaseModel):
     """Result of statistical analysis."""
     analysis_id: str
@@ -318,6 +328,8 @@ class InsightResult(BaseModel):
     statistics: List[FieldStatistics] = Field(default_factory=list)
     correlations: List[CorrelationPair] = Field(default_factory=list)
     outliers: List[OutlierInfo] = Field(default_factory=list)
+    clustering: Optional[ClusterInfo] = Field(default=None)
+    narrative: Optional[str] = Field(default=None, description="LLM-generated insight summary")
     analyzed_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -329,6 +341,9 @@ class InsightConfig(BaseModel):
     include_stats: bool = Field(default=True)
     include_correlations: bool = Field(default=True)
     include_outliers: bool = Field(default=True)
+    include_clustering: bool = Field(default=False)
+    n_clusters: int = Field(default=3, ge=2, le=20)
+    include_narrative: bool = Field(default=False)
 
 
 class ErrorResponse(BaseModel):
