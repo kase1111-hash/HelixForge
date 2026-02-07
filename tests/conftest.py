@@ -153,7 +153,7 @@ def alignment_config() -> Dict:
     """Configuration for Ontology Alignment Agent."""
     return {
         "alignment": {
-            "similarity_threshold": 0.70,
+            "similarity_threshold": 0.50,
             "exact_match_threshold": 0.95,
             "synonym_threshold": 0.85,
             "max_alignments_per_field": 3,

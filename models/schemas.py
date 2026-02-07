@@ -174,13 +174,26 @@ class AlignmentResult(BaseModel):
     completed_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class ScoringWeights(BaseModel):
+    """Weights for the multi-signal alignment scoring pipeline."""
+    name: float = Field(default=0.30, ge=0, le=1, description="Field name similarity weight")
+    embedding: float = Field(default=0.40, ge=0, le=1, description="Embedding cosine similarity weight")
+    type_match: float = Field(default=0.15, ge=0, le=1, description="Type/semantic type match weight")
+    stats: float = Field(default=0.15, ge=0, le=1, description="Statistical profile similarity weight")
+
+
 class AlignmentConfig(BaseModel):
     """Configuration for Ontology Alignment Agent."""
-    similarity_threshold: float = Field(default=0.80)
-    exact_match_threshold: float = Field(default=0.98)
-    synonym_threshold: float = Field(default=0.90)
+    similarity_threshold: float = Field(default=0.50)
+    exact_match_threshold: float = Field(default=0.95)
+    synonym_threshold: float = Field(default=0.85)
     max_alignments_per_field: int = Field(default=3)
     conflict_resolution: str = Field(default="highest_similarity")
+    scoring_weights: ScoringWeights = Field(default_factory=ScoringWeights)
+    enforce_type_compatibility: bool = Field(
+        default=True,
+        description="Reject alignments between fundamentally incompatible types"
+    )
 
 
 # Layer 4: Fusion
