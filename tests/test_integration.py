@@ -1,7 +1,5 @@
 """Integration tests for HelixForge agent pipeline."""
 
-from unittest.mock import MagicMock, patch
-
 import pytest
 
 from agents.data_ingestor_agent import DataIngestorAgent
@@ -9,6 +7,7 @@ from agents.metadata_interpreter_agent import MetadataInterpreterAgent
 from agents.ontology_alignment_agent import OntologyAlignmentAgent
 from agents.fusion_agent import FusionAgent
 from models.schemas import JoinStrategy
+from utils.llm import MockProvider
 
 
 class TestAgentPipeline:
@@ -26,21 +25,9 @@ class TestAgentPipeline:
         }
 
     @pytest.fixture
-    def mock_openai_client(self):
-        """Create mock OpenAI client."""
-        client = MagicMock()
-
-        chat_response = MagicMock()
-        chat_response.choices = [MagicMock()]
-        chat_response.choices[0].message.content = """{
-            "semantic_label": "Test Field",
-            "description": "A test field",
-            "semantic_type": "metric",
-            "confidence": 0.9
-        }"""
-        client.chat.completions.create.return_value = chat_response
-
-        return client
+    def provider(self):
+        """Create MockProvider for testing."""
+        return MockProvider(dimensions=1536)
 
     @pytest.fixture
     def employee_csv(self, tmp_path):
@@ -68,11 +55,12 @@ class TestAgentPipeline:
         )
         return str(csv_file)
 
-    def test_ingestor_to_interpreter_pipeline(self, all_configs, employee_csv, mock_openai_client):
+    def test_ingestor_to_interpreter_pipeline(self, all_configs, employee_csv, provider):
         """Test data flows from ingestor to interpreter."""
         ingestor = DataIngestorAgent(config=all_configs["ingestor"])
-        interpreter = MetadataInterpreterAgent(config=all_configs["interpreter"])
-        interpreter._openai_client = mock_openai_client
+        interpreter = MetadataInterpreterAgent(
+            config=all_configs["interpreter"], provider=provider
+        )
 
         # Ingest data
         ingest_result = ingestor.ingest_file(employee_csv)
@@ -83,19 +71,18 @@ class TestAgentPipeline:
         df = ingestor.get_dataframe(ingest_result.dataset_id)
         assert df is not None
 
-        with patch("agents.metadata_interpreter_agent.batch_embed") as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(len(df.columns))]
-            metadata = interpreter.process(ingest_result.dataset_id, df)
+        metadata = interpreter.process(ingest_result.dataset_id, df)
 
         assert metadata is not None
         assert len(metadata.fields) == len(df.columns)
         assert metadata.dataset_id == ingest_result.dataset_id
 
-    def test_two_dataset_alignment(self, all_configs, employee_csv, department_csv, mock_openai_client):
+    def test_two_dataset_alignment(self, all_configs, employee_csv, department_csv, provider):
         """Test alignment of two datasets."""
         ingestor = DataIngestorAgent(config=all_configs["ingestor"])
-        interpreter = MetadataInterpreterAgent(config=all_configs["interpreter"])
-        interpreter._openai_client = mock_openai_client
+        interpreter = MetadataInterpreterAgent(
+            config=all_configs["interpreter"], provider=provider
+        )
         aligner = OntologyAlignmentAgent(config=all_configs["alignment"])
 
         # Ingest both datasets
@@ -106,12 +93,8 @@ class TestAgentPipeline:
         dept_df = ingestor.get_dataframe(dept_result.dataset_id)
 
         # Generate metadata for both
-        with patch("agents.metadata_interpreter_agent.batch_embed") as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(5)]
-            emp_metadata = interpreter.process(emp_result.dataset_id, emp_df)
-
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(4)]
-            dept_metadata = interpreter.process(dept_result.dataset_id, dept_df)
+        emp_metadata = interpreter.process(emp_result.dataset_id, emp_df)
+        dept_metadata = interpreter.process(dept_result.dataset_id, dept_df)
 
         # Perform alignment
         alignment = aligner.process([emp_metadata, dept_metadata])
@@ -121,12 +104,13 @@ class TestAgentPipeline:
         assert "employees" in alignment.datasets_aligned
         assert "departments" in alignment.datasets_aligned
 
-    def test_full_fusion_pipeline(self, all_configs, employee_csv, department_csv, mock_openai_client):
+    def test_full_fusion_pipeline(self, all_configs, employee_csv, department_csv, provider):
         """Test full pipeline from ingestion to fusion."""
         # Initialize agents
         ingestor = DataIngestorAgent(config=all_configs["ingestor"])
-        interpreter = MetadataInterpreterAgent(config=all_configs["interpreter"])
-        interpreter._openai_client = mock_openai_client
+        interpreter = MetadataInterpreterAgent(
+            config=all_configs["interpreter"], provider=provider
+        )
         aligner = OntologyAlignmentAgent(config=all_configs["alignment"])
         fusion = FusionAgent(config=all_configs["fusion"])
 
@@ -138,28 +122,23 @@ class TestAgentPipeline:
         dept_df = ingestor.get_dataframe(dept_result.dataset_id)
 
         # Interpret metadata
-        with patch("agents.metadata_interpreter_agent.batch_embed") as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(5)]
-            emp_metadata = interpreter.process(emp_result.dataset_id, emp_df)
-
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(4)]
-            dept_metadata = interpreter.process(dept_result.dataset_id, dept_df)
+        emp_metadata = interpreter.process(emp_result.dataset_id, emp_df)
+        dept_metadata = interpreter.process(dept_result.dataset_id, dept_df)
 
         # Align schemas
         alignment = aligner.process([emp_metadata, dept_metadata])
 
-        # Fuse datasets (using concat since we don't have matching keys)
+        # Fuse datasets
         fusion_result = fusion.process(
             dataframes={"employees": emp_df, "departments": dept_df},
-            alignment=alignment,
-            join_strategy=JoinStrategy.CONCAT
+            alignment_result=alignment,
         )
 
         assert fusion_result is not None
         assert fusion_result.fused_dataset_id is not None
-        assert fusion_result.total_records > 0
+        assert fusion_result.record_count > 0
 
-    def test_event_propagation_between_agents(self, all_configs, employee_csv, mock_openai_client):
+    def test_event_propagation_between_agents(self, all_configs, employee_csv, provider):
         """Test events propagate between agents."""
         events_received = []
 
@@ -168,8 +147,9 @@ class TestAgentPipeline:
 
         # Initialize agents
         ingestor = DataIngestorAgent(config=all_configs["ingestor"])
-        interpreter = MetadataInterpreterAgent(config=all_configs["interpreter"])
-        interpreter._openai_client = mock_openai_client
+        interpreter = MetadataInterpreterAgent(
+            config=all_configs["interpreter"], provider=provider
+        )
 
         # Subscribe to events
         ingestor.subscribe("data.ingested", event_collector)
@@ -178,10 +158,7 @@ class TestAgentPipeline:
         # Run pipeline
         result = ingestor.ingest_file(employee_csv)
         df = ingestor.get_dataframe(result.dataset_id)
-
-        with patch("agents.metadata_interpreter_agent.batch_embed") as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(5)]
-            interpreter.process(result.dataset_id, df)
+        interpreter.process(result.dataset_id, df)
 
         # Verify events were received
         assert len(events_received) == 2
@@ -189,7 +166,7 @@ class TestAgentPipeline:
         assert "data.ingested" in event_types
         assert "metadata.ready" in event_types
 
-    def test_correlation_id_propagation(self, all_configs, employee_csv, mock_openai_client):
+    def test_correlation_id_propagation(self, all_configs, employee_csv, provider):
         """Test correlation ID propagates through pipeline."""
         correlation_id = "test-correlation-123"
 
@@ -200,9 +177,9 @@ class TestAgentPipeline:
         )
         interpreter = MetadataInterpreterAgent(
             config=all_configs["interpreter"],
-            correlation_id=correlation_id
+            correlation_id=correlation_id,
+            provider=provider,
         )
-        interpreter._openai_client = mock_openai_client
 
         # Verify correlation IDs match
         assert ingestor.correlation_id == correlation_id
@@ -211,10 +188,7 @@ class TestAgentPipeline:
         # Run pipeline
         result = ingestor.ingest_file(employee_csv)
         df = ingestor.get_dataframe(result.dataset_id)
-
-        with patch("agents.metadata_interpreter_agent.batch_embed") as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(5)]
-            metadata = interpreter.process(result.dataset_id, df)
+        metadata = interpreter.process(result.dataset_id, df)
 
         assert metadata is not None
 

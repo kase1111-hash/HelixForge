@@ -269,6 +269,13 @@ def clean_temp_files(tmp_path):
 
 
 @pytest.fixture
+def mock_provider():
+    """MockProvider for testing without OpenAI API calls."""
+    from utils.llm import MockProvider
+    return MockProvider(dimensions=1536)
+
+
+@pytest.fixture
 def disable_network_calls(monkeypatch):
     """Disable actual network calls during tests."""
     import requests

@@ -17,7 +17,7 @@ from models.schemas import (
     InterpreterConfig,
     SemanticType,
 )
-from utils.embeddings import batch_embed
+from utils.llm import LLMProvider, OpenAIProvider
 
 
 class MetadataInterpreterAgent(BaseAgent):
@@ -25,27 +25,40 @@ class MetadataInterpreterAgent(BaseAgent):
 
     Generates semantic labels, descriptions, and embeddings
     for each field in a dataset using LLM inference.
+
+    Accepts an LLMProvider for dependency injection, defaulting
+    to OpenAIProvider if none is supplied.
     """
 
     def __init__(
         self,
         config: Optional[Dict[str, Any]] = None,
-        correlation_id: Optional[str] = None
+        correlation_id: Optional[str] = None,
+        provider: Optional[LLMProvider] = None,
     ):
         super().__init__(config, correlation_id)
         self._config = InterpreterConfig(**self.config.get("interpreter", {}))
+        self._provider = provider
+        # Legacy attribute kept for backward compat with tests that set
+        # agent._openai_client directly.
         self._openai_client = None
 
     @property
     def event_type(self) -> str:
         return "metadata.ready"
 
-    def _get_openai_client(self):
-        """Lazily initialize OpenAI client."""
-        if self._openai_client is None:
-            from openai import OpenAI
-            self._openai_client = OpenAI()
-        return self._openai_client
+    def _get_provider(self) -> LLMProvider:
+        """Return the configured LLM provider, lazily initializing if needed."""
+        if self._provider is not None:
+            return self._provider
+        # Legacy path: if _openai_client was set directly (e.g. by tests),
+        # wrap it in an OpenAIProvider.
+        if self._openai_client is not None:
+            self._provider = OpenAIProvider(client=self._openai_client)
+            return self._provider
+        # Default: create a new OpenAIProvider
+        self._provider = OpenAIProvider()
+        return self._provider
 
     def process(
         self,
@@ -158,6 +171,8 @@ class MetadataInterpreterAgent(BaseAgent):
     def _infer_data_type(self, series: pd.Series) -> DataType:
         """Infer data type from pandas series.
 
+        Handles both classic object dtype and pandas 2.x StringDtype.
+
         Args:
             series: Pandas Series.
 
@@ -174,8 +189,8 @@ class MetadataInterpreterAgent(BaseAgent):
             return DataType.BOOLEAN
         elif pd.api.types.is_datetime64_any_dtype(dtype):
             return DataType.DATETIME
-        elif pd.api.types.is_object_dtype(dtype):
-            # Check if it looks like datetime
+        elif pd.api.types.is_string_dtype(dtype):
+            # Covers object, StringDtype, and str dtype (pandas 2.x+)
             sample = series.dropna().head(10)
             try:
                 pd.to_datetime(sample)
@@ -223,18 +238,18 @@ Infer the semantic meaning of this field. Respond with:
 Respond in JSON format only."""
 
         try:
-            client = self._get_openai_client()
-            response = client.chat.completions.create(
-                model=self._config.llm_model,
-                temperature=self._config.llm_temperature,
+            provider = self._get_provider()
+            response_text = provider.complete(
                 messages=[
                     {"role": "system", "content": "You are a data analyst expert at understanding dataset schemas."},
                     {"role": "user", "content": prompt}
                 ],
-                response_format={"type": "json_object"}
+                model=self._config.llm_model,
+                temperature=self._config.llm_temperature,
+                response_format={"type": "json_object"},
             )
 
-            result = json.loads(response.choices[0].message.content)
+            result = json.loads(response_text)
 
             # Validate semantic_type
             valid_types = [t.value for t in SemanticType]
@@ -328,21 +343,21 @@ Respond in JSON format only."""
         # Create text representations for each field
         texts = []
         for name in field_names:
-            # Combine field name with sample values
             series = df[name]
             samples = series.dropna().head(5).astype(str).tolist()
             text = f"{name}: {', '.join(samples)}"
             texts.append(text)
 
         try:
-            return batch_embed(
+            provider = self._get_provider()
+            return provider.embed(
                 texts,
                 model=self._config.embedding_model,
-                batch_size=self._config.batch_size
+                batch_size=self._config.batch_size,
+                dimensions=self._config.embedding_dimensions,
             )
         except Exception as e:
             self.logger.warning(f"Embedding generation failed: {e}")
-            # Return zero vectors as fallback
             dim = self._config.embedding_dimensions
             return [[0.0] * dim for _ in field_names]
 
@@ -376,17 +391,16 @@ Field details:
 Write a concise description focusing on what data this dataset contains and its potential use."""
 
         try:
-            client = self._get_openai_client()
-            response = client.chat.completions.create(
-                model=self._config.llm_model,
-                temperature=self._config.llm_temperature,
+            provider = self._get_provider()
+            return provider.complete(
                 messages=[
                     {"role": "system", "content": "You are a data documentation expert."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=200
-            )
-            return response.choices[0].message.content.strip()
+                model=self._config.llm_model,
+                temperature=self._config.llm_temperature,
+                max_tokens=200,
+            ).strip()
         except Exception as e:
             self.logger.warning(f"Dataset description generation failed: {e}")
             return f"Dataset with {len(df)} rows and {len(fields)} fields including: {field_summary}"

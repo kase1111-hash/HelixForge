@@ -6,7 +6,6 @@ They test end-to-end functionality from the user's perspective.
 
 import os
 import tempfile
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -16,6 +15,7 @@ from agents.metadata_interpreter_agent import MetadataInterpreterAgent
 from agents.ontology_alignment_agent import OntologyAlignmentAgent
 from agents.fusion_agent import FusionAgent
 from models.schemas import JoinStrategy
+from utils.llm import MockProvider
 
 
 class TestUserStory1_DataIngestion:
@@ -129,10 +129,10 @@ class TestUserStory2_SemanticLabeling:
     """
 
     @pytest.fixture
-    def mock_interpreter(self, interpreter_config, mock_openai_client):
-        agent = MetadataInterpreterAgent(config=interpreter_config)
-        agent._openai_client = mock_openai_client
-        return agent
+    def mock_interpreter(self, interpreter_config):
+        return MetadataInterpreterAgent(
+            config=interpreter_config, provider=MockProvider(dimensions=1536)
+        )
 
     def test_ac1_infers_data_types(self, mock_interpreter):
         """AC1: System infers data types."""
@@ -143,9 +143,7 @@ class TestUserStory2_SemanticLabeling:
             "active": [True, False, True]
         })
 
-        with patch("agents.metadata_interpreter_agent.batch_embed") as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(4)]
-            result = mock_interpreter.process("test-dataset", df)
+        result = mock_interpreter.process("test-dataset", df)
 
         # Verify data types are inferred
         field_types = {f.field_name: f.data_type for f in result.fields}
@@ -158,9 +156,7 @@ class TestUserStory2_SemanticLabeling:
             "total_amount": [100.0, 200.0, 300.0]
         })
 
-        with patch("agents.metadata_interpreter_agent.batch_embed") as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(2)]
-            result = mock_interpreter.process("test-dataset", df)
+        result = mock_interpreter.process("test-dataset", df)
 
         # Verify semantic types are assigned
         assert len(result.fields) == 2
@@ -171,9 +167,7 @@ class TestUserStory2_SemanticLabeling:
         """AC3: System provides confidence scores."""
         df = pd.DataFrame({"value": [1, 2, 3]})
 
-        with patch("agents.metadata_interpreter_agent.batch_embed") as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536]
-            result = mock_interpreter.process("test-dataset", df)
+        result = mock_interpreter.process("test-dataset", df)
 
         # Verify confidence scores exist
         for field in result.fields:
@@ -196,9 +190,13 @@ class TestUserStory3_SchemaAlignment:
         return OntologyAlignmentAgent(config=alignment_config)
 
     @pytest.fixture
-    def two_metadata_results(self, interpreter_config, mock_openai_client):
-        """Create metadata for two similar datasets."""
+    def two_metadata_results(self):
+        """Create metadata for two similar datasets with orthogonal embeddings."""
         from models.schemas import DatasetMetadata, FieldMetadata, DataType, SemanticType
+
+        # Orthogonal embeddings so cosine similarity is meaningful
+        emb_id = [1.0] * 512 + [0.0] * 512 + [0.0] * 512
+        emb_salary = [0.0] * 512 + [1.0] * 512 + [0.0] * 512
 
         meta1 = DatasetMetadata(
             dataset_id="dataset-1",
@@ -215,7 +213,7 @@ class TestUserStory3_SchemaAlignment:
                     null_ratio=0,
                     unique_ratio=1,
                     confidence=0.95,
-                    embedding=[0.1] * 1536
+                    embedding=emb_id,
                 ),
                 FieldMetadata(
                     dataset_id="dataset-1",
@@ -227,7 +225,7 @@ class TestUserStory3_SchemaAlignment:
                     null_ratio=0,
                     unique_ratio=0.9,
                     confidence=0.9,
-                    embedding=[0.2] * 1536
+                    embedding=emb_salary,
                 )
             ]
         )
@@ -247,7 +245,7 @@ class TestUserStory3_SchemaAlignment:
                     null_ratio=0,
                     unique_ratio=1,
                     confidence=0.9,
-                    embedding=[0.1] * 1536
+                    embedding=emb_id,
                 ),
                 FieldMetadata(
                     dataset_id="dataset-2",
@@ -259,7 +257,7 @@ class TestUserStory3_SchemaAlignment:
                     null_ratio=0,
                     unique_ratio=0.85,
                     confidence=0.85,
-                    embedding=[0.2] * 1536
+                    embedding=emb_salary,
                 )
             ]
         )
@@ -392,7 +390,6 @@ class TestEndToEndWorkflow:
         interpreter_config,
         alignment_config,
         fusion_config,
-        mock_openai_client,
         tmp_path
     ):
         """Test complete workflow from ingestion to alignment."""
@@ -419,14 +416,13 @@ class TestEndToEndWorkflow:
         assert df2 is not None
 
         # 3. Interpret metadata
-        interpreter = MetadataInterpreterAgent(config=interpreter_config)
-        interpreter._openai_client = mock_openai_client
+        provider = MockProvider(dimensions=1536)
+        interpreter = MetadataInterpreterAgent(
+            config=interpreter_config, provider=provider
+        )
 
-        with patch("agents.metadata_interpreter_agent.batch_embed") as mock_embed:
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(3)]
-            meta1 = interpreter.process("employees", df1)
-            mock_embed.return_value = [[0.1] * 1536 for _ in range(2)]
-            meta2 = interpreter.process("performance", df2)
+        meta1 = interpreter.process("employees", df1)
+        meta2 = interpreter.process("performance", df2)
 
         assert len(meta1.fields) == 3
         assert len(meta2.fields) == 2
@@ -436,6 +432,3 @@ class TestEndToEndWorkflow:
         alignment = aligner.process([meta1, meta2])
 
         assert alignment is not None
-
-        # Workflow completed successfully
-        print("End-to-end workflow completed successfully!")
