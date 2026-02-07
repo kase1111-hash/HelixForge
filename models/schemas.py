@@ -101,6 +101,10 @@ class IngestorConfig(BaseModel):
     sql_timeout_seconds: int = Field(default=300)
     rest_timeout_seconds: int = Field(default=60)
     temp_storage_path: str = Field(default="./data/raw/")
+    experimental_sources: bool = Field(
+        default=False,
+        description="Enable experimental SQL and REST ingestion (requires sqlalchemy/requests)"
+    )
 
 
 # Layer 2: Metadata Interpreter

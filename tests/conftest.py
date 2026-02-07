@@ -278,7 +278,10 @@ def mock_provider():
 @pytest.fixture
 def disable_network_calls(monkeypatch):
     """Disable actual network calls during tests."""
-    import requests
+    try:
+        import requests
+    except ImportError:
+        pytest.skip("requests not installed")
 
     def mock_get(*args, **kwargs):
         raise RuntimeError("Network calls disabled in tests")

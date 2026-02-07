@@ -1,0 +1,6 @@
+id,label,value,flag,timestamp
+1,alpha,3.14,true,2023-01-15T10:30:00
+2,beta,2.71,false,2023-02-20T14:45:00
+3,gamma,1.41,true,2023-03-10T09:00:00
+4,delta,1.73,false,2023-04-05T16:20:00
+5,epsilon,2.24,true,2023-05-12T11:10:00

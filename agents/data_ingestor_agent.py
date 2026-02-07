@@ -1,7 +1,10 @@
 """Data Ingestor Agent for HelixForge.
 
 Handles ingestion of data from various sources including
-CSV, Parquet, JSON files, SQL databases, and REST APIs.
+CSV, Parquet, JSON, and Excel files.
+
+SQL and REST ingestion are experimental and gated behind
+the ``experimental_sources`` config flag.
 """
 
 import hashlib
@@ -15,7 +18,7 @@ import pyarrow.parquet as pq
 
 from agents.base_agent import BaseAgent
 from models.schemas import IngestorConfig, IngestResult, SourceType
-from utils.validation import validate_file_path, validate_url
+from utils.validation import validate_file_path
 
 
 class IngestionError(Exception):
@@ -72,18 +75,26 @@ class DataIngestorAgent(BaseAgent):
 
             source_type_enum = SourceType(source_type.lower())
 
-            # Route to appropriate handler
+            # Route to appropriate handler (file-based sources only by default)
             handlers: Dict[SourceType, Any] = {
                 SourceType.CSV: self._ingest_csv,
                 SourceType.PARQUET: self._ingest_parquet,
                 SourceType.JSON: self._ingest_json,
                 SourceType.XLSX: self._ingest_excel,
-                SourceType.SQL: self._ingest_sql,
-                SourceType.REST: self._ingest_rest,
             }
+
+            # SQL and REST are experimental - require opt-in
+            if self._config.experimental_sources:
+                handlers[SourceType.SQL] = self._ingest_sql
+                handlers[SourceType.REST] = self._ingest_rest
 
             handler = handlers.get(source_type_enum)
             if handler is None:
+                if source_type_enum in (SourceType.SQL, SourceType.REST):
+                    raise IngestionError(
+                        f"Source type '{source_type}' requires experimental_sources=True. "
+                        "SQL and REST ingestion are experimental and need sqlalchemy/requests."
+                    )
                 raise IngestionError(f"Unsupported source type: {source_type}")
 
             # Extract dataset_id before passing kwargs to handler
@@ -249,14 +260,24 @@ class DataIngestorAgent(BaseAgent):
         if delimiter is None:
             delimiter = self._detect_delimiter(file_path, encoding)
 
-        df = pd.read_csv(
-            file_path,
-            encoding=encoding,
-            sep=delimiter,
-            **kwargs
-        )
+        # Try detected encoding, then fallback chain if it fails
+        fallback_encodings = ["utf-8", "utf-8-sig", "latin-1"]
+        last_error = None
 
-        return df, {"encoding": encoding, "delimiter": delimiter}
+        for enc in [encoding] + fallback_encodings:
+            try:
+                delim = self._detect_delimiter(file_path, enc)
+                df = pd.read_csv(file_path, encoding=enc, sep=delim, **kwargs)
+                if enc != encoding:
+                    self.logger.warning(
+                        f"Encoding '{encoding}' failed, used fallback '{enc}'"
+                    )
+                return df, {"encoding": enc, "delimiter": delim}
+            except (UnicodeDecodeError, LookupError) as e:
+                last_error = e
+                continue
+
+        raise last_error  # type: ignore[misc]
 
     def _ingest_parquet(
         self,
@@ -380,6 +401,7 @@ class DataIngestorAgent(BaseAgent):
         Returns:
             Tuple of (DataFrame, metadata).
         """
+        from utils.validation import validate_url
         validate_url(url)
 
         headers = kwargs.pop("headers", {})
@@ -448,7 +470,7 @@ class DataIngestorAgent(BaseAgent):
         """
         delimiters = [",", "\t", ";", "|"]
 
-        with open(file_path, "r", encoding=encoding) as f:
+        with open(file_path, "r", encoding=encoding, errors="replace") as f:
             sample = f.read(8192)
 
         # Count occurrences of each delimiter
