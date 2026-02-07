@@ -1,0 +1,82 @@
+[
+  {
+    "id": "exact_names",
+    "description": "Exact field name matches across HR datasets",
+    "expected_alignments": [
+      ["name", "name"],
+      ["department", "department"],
+      ["salary", "salary"]
+    ]
+  },
+  {
+    "id": "synonym_fields",
+    "description": "Synonym field names (emp_id/employee_id, wage/salary)",
+    "expected_alignments": [
+      ["emp_id", "employee_id"],
+      ["annual_salary", "yearly_salary"],
+      ["hire_date", "start_date"]
+    ]
+  },
+  {
+    "id": "no_overlap",
+    "description": "Intentionally non-overlapping schemas",
+    "expected_alignments": []
+  },
+  {
+    "id": "type_conflict",
+    "description": "Fields with incompatible types should NOT align",
+    "expected_alignments": [
+      ["record_id", "record_id"]
+    ]
+  },
+  {
+    "id": "partial_overlap",
+    "description": "Some fields match, some don't",
+    "expected_alignments": [
+      ["employee_id", "emp_id"],
+      ["department", "dept"]
+    ]
+  },
+  {
+    "id": "many_to_one",
+    "description": "Multiple source fields compete for one target",
+    "expected_alignments": [
+      ["total_amount", "amount"]
+    ]
+  },
+  {
+    "id": "cardinality_mismatch",
+    "description": "ID (unique) should match ID, not category (low cardinality)",
+    "expected_alignments": [
+      ["user_id", "user_id"],
+      ["status", "status"]
+    ]
+  },
+  {
+    "id": "naming_conventions",
+    "description": "Different naming conventions (camelCase vs snake_case)",
+    "expected_alignments": [
+      ["first_name", "firstName"],
+      ["last_name", "lastName"],
+      ["email_address", "emailAddress"]
+    ]
+  },
+  {
+    "id": "medical_domain",
+    "description": "Medical domain with domain-specific synonyms",
+    "expected_alignments": [
+      ["patient_id", "record_id"],
+      ["birth_date", "date_of_birth"],
+      ["diagnosis", "condition"]
+    ]
+  },
+  {
+    "id": "financial_domain",
+    "description": "Financial transactions vs payments",
+    "expected_alignments": [
+      ["transaction_id", "payment_id"],
+      ["amount", "total"],
+      ["created_at", "timestamp"]
+    ]
+  }
+]

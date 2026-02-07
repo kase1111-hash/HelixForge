@@ -172,7 +172,7 @@ class TestOntologyAlignmentAgent:
 
     def test_classify_alignment_partial(self, agent):
         """Test alignment classification for partial."""
-        alignment_type = agent._classify_alignment(0.75)
+        alignment_type = agent._classify_alignment(0.55)
         assert alignment_type == AlignmentType.PARTIAL
 
     def test_suggest_transformation_type_cast(self, agent, metadata_a, metadata_b):

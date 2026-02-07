@@ -1,11 +1,15 @@
 """Ontology Alignment Agent for HelixForge.
 
 Identifies semantic relationships between fields across
-different datasets using embedding similarity.
+different datasets using a multi-signal scoring pipeline:
+  1. Name similarity (token-based fuzzy matching)
+  2. Embedding similarity (cosine similarity)
+  3. Type compatibility (gate + match bonus)
+  4. Statistical profile similarity (null ratio, cardinality)
 """
 
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional, Set
 
 
 from agents.base_agent import BaseAgent
@@ -14,17 +18,27 @@ from models.schemas import (
     AlignmentResult,
     AlignmentType,
     DatasetMetadata,
+    DataType,
     FieldAlignment,
     FieldMetadata,
 )
 from utils.embeddings import cosine_similarity
 
+# Type pairs that are fundamentally incompatible for alignment.
+# If enforce_type_compatibility is True, these pairs score 0.
+_INCOMPATIBLE_TYPES: Set[FrozenSet[DataType]] = {
+    frozenset({DataType.DATETIME, DataType.BOOLEAN}),
+    frozenset({DataType.DATETIME, DataType.INTEGER}),
+    frozenset({DataType.DATETIME, DataType.FLOAT}),
+    frozenset({DataType.BOOLEAN, DataType.FLOAT}),
+}
+
 
 class OntologyAlignmentAgent(BaseAgent):
     """Agent for aligning ontologies across datasets.
 
-    Computes semantic similarity between fields to identify
-    matching columns across different data sources.
+    Uses a multi-signal scoring pipeline to identify matching
+    columns across different data sources.
     """
 
     def __init__(
@@ -162,57 +176,109 @@ class OntologyAlignmentAgent(BaseAgent):
 
         return alignments
 
+    # ------------------------------------------------------------------ #
+    #  Multi-signal scoring pipeline                                      #
+    # ------------------------------------------------------------------ #
+
     def _compute_similarity(
         self,
         field_a: FieldMetadata,
         field_b: FieldMetadata
     ) -> float:
-        """Compute similarity between two fields.
+        """Compute similarity between two fields using multiple signals.
 
-        Args:
-            field_a: First field metadata.
-            field_b: Second field metadata.
+        Scoring pipeline:
+          1. Type compatibility gate (hard reject for incompatible types)
+          2. Name similarity (fuzzy token matching on field names)
+          3. Embedding similarity (cosine, or label fallback)
+          4. Type/semantic-type match bonus
+          5. Statistical profile similarity (null ratio, cardinality)
 
         Returns:
             Similarity score between 0 and 1.
         """
-        # Use embeddings if available
+        # Gate: reject fundamentally incompatible types
+        if self._config.enforce_type_compatibility:
+            if not self._are_types_compatible(field_a.data_type, field_b.data_type):
+                return 0.0
+
+        w = self._config.scoring_weights
+
+        # Signal 1: name similarity
+        name_sim = self._name_similarity(field_a, field_b)
+
+        # Signal 2: embedding similarity
+        emb_sim = self._embedding_similarity(field_a, field_b)
+
+        # Signal 3: type match
+        type_sim = self._type_match_score(field_a, field_b)
+
+        # Signal 4: statistical profile
+        stats_sim = self._stats_similarity(field_a, field_b)
+
+        combined = (
+            w.name * name_sim
+            + w.embedding * emb_sim
+            + w.type_match * type_sim
+            + w.stats * stats_sim
+        )
+
+        return min(combined, 1.0)
+
+    def _are_types_compatible(self, type_a: DataType, type_b: DataType) -> bool:
+        """Check if two data types are compatible for alignment."""
+        if type_a == type_b:
+            return True
+        # STRING and OBJECT are compatible with anything
+        flexible = {DataType.STRING, DataType.OBJECT}
+        if type_a in flexible or type_b in flexible:
+            return True
+        return frozenset({type_a, type_b}) not in _INCOMPATIBLE_TYPES
+
+    def _name_similarity(self, field_a: FieldMetadata, field_b: FieldMetadata) -> float:
+        """Compute field name similarity using fuzzy token matching."""
+        from utils.similarity import string_similarity
+
+        name_a = field_a.field_name.lower().replace("_", " ")
+        name_b = field_b.field_name.lower().replace("_", " ")
+
+        # Exact name match is a strong signal
+        if name_a == name_b:
+            return 1.0
+
+        return string_similarity(name_a, name_b, method="token_set")
+
+    def _embedding_similarity(self, field_a: FieldMetadata, field_b: FieldMetadata) -> float:
+        """Compute embedding-based similarity, with label fallback."""
         if field_a.embedding and field_b.embedding:
             try:
                 return min(cosine_similarity(field_a.embedding, field_b.embedding), 1.0)
             except ValueError:
                 pass
 
-        # Fallback to name and label similarity
+        # Fallback: compare semantic labels
         from utils.similarity import string_similarity
-
-        name_sim = string_similarity(
-            field_a.field_name.lower(),
-            field_b.field_name.lower(),
-            method="token_set"
-        )
-
-        label_sim = string_similarity(
+        return string_similarity(
             field_a.semantic_label.lower(),
             field_b.semantic_label.lower(),
             method="token_set"
         )
 
-        # Weight by confidence
-        avg_confidence = (field_a.confidence + field_b.confidence) / 2
+    def _type_match_score(self, field_a: FieldMetadata, field_b: FieldMetadata) -> float:
+        """Score based on data type and semantic type compatibility."""
+        data_type_match = 1.0 if field_a.data_type == field_b.data_type else 0.0
+        semantic_type_match = 1.0 if field_a.semantic_type == field_b.semantic_type else 0.0
+        return (data_type_match + semantic_type_match) / 2.0
 
-        # Combine similarities
-        combined = (name_sim * 0.3 + label_sim * 0.5 + avg_confidence * 0.2)
+    def _stats_similarity(self, field_a: FieldMetadata, field_b: FieldMetadata) -> float:
+        """Score based on statistical profile similarity."""
+        null_diff = abs(field_a.null_ratio - field_b.null_ratio)
+        unique_diff = abs(field_a.unique_ratio - field_b.unique_ratio)
+        return 1.0 - (null_diff + unique_diff) / 2.0
 
-        # Boost if same semantic type
-        if field_a.semantic_type == field_b.semantic_type:
-            combined = min(combined * 1.1, 1.0)
-
-        # Penalize if different data types
-        if field_a.data_type != field_b.data_type:
-            combined *= 0.9
-
-        return min(combined, 1.0)
+    # ------------------------------------------------------------------ #
+    #  Classification and transformation                                  #
+    # ------------------------------------------------------------------ #
 
     def _classify_alignment(self, similarity: float) -> AlignmentType:
         """Classify alignment type based on similarity.
@@ -227,7 +293,7 @@ class OntologyAlignmentAgent(BaseAgent):
             return AlignmentType.EXACT
         elif similarity >= self._config.synonym_threshold:
             return AlignmentType.SYNONYM
-        elif similarity >= 0.80:
+        elif similarity >= 0.70:
             return AlignmentType.RELATED
         elif similarity >= self._config.similarity_threshold:
             return AlignmentType.PARTIAL
@@ -301,4 +367,3 @@ class OntologyAlignmentAgent(BaseAgent):
             resolved.append(best)
 
         return resolved
-
