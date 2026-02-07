@@ -18,12 +18,8 @@ import pyarrow.parquet as pq
 
 from agents.base_agent import BaseAgent
 from models.schemas import IngestorConfig, IngestResult, SourceType
+from utils.errors import IngestionError
 from utils.validation import validate_file_path
-
-
-class IngestionError(Exception):
-    """Raised when data ingestion fails."""
-    pass
 
 
 class DataIngestorAgent(BaseAgent):

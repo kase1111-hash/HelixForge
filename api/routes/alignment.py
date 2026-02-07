@@ -5,6 +5,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, status
 
 from models.schemas import AlignmentRequest, AlignmentResult, ErrorResponse
+from utils.errors import HelixForgeError
 
 router = APIRouter()
 
@@ -72,10 +73,12 @@ async def align_datasets(request: AlignmentRequest):
 
         return result
 
+    except HelixForgeError:
+        raise  # Handled by global exception handler
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error during alignment: {type(e).__name__}: {e}"
         )
 
 

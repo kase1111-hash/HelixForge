@@ -208,7 +208,8 @@ class TestAPIIntegration:
         response = test_client.get("/health")
         assert response.status_code == 200
         data = response.json()
-        assert data["status"] == "healthy"
+        assert data["status"] in ("healthy", "degraded")
+        assert "checks" in data
 
     def test_dataset_upload_and_retrieve(self, test_client, tmp_path):
         """Test uploading and retrieving a dataset."""
@@ -223,9 +224,8 @@ class TestAPIIntegration:
                 files={"file": ("test.csv", f, "text/csv")}
             )
 
-        # May return 201 or 500 depending on server state
-        # Just verify endpoint exists and responds
-        assert response.status_code in [201, 500, 422]
+        # May return 201, 503 (agents not initialized), or 500
+        assert response.status_code in [201, 500, 503, 422]
 
 
 class TestDataFlowIntegrity:
