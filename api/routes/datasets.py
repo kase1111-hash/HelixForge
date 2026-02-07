@@ -67,10 +67,6 @@ async def upload_dataset(
             "df": ingestor.get_dataframe(result.dataset_id)
         }
 
-        # Record provenance
-        if "provenance" in state:
-            state["provenance"].record_ingestion(result)
-
         # Clean up temp file
         os.unlink(tmp_path)
 

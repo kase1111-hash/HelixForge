@@ -12,8 +12,6 @@ from typing import Any, Dict, Optional
 import chardet
 import pandas as pd
 import pyarrow.parquet as pq
-import requests
-from sqlalchemy import create_engine, text
 
 from agents.base_agent import BaseAgent
 from models.schemas import IngestorConfig, IngestResult, SourceType
@@ -359,6 +357,8 @@ class DataIngestorAgent(BaseAgent):
 
         timeout = kwargs.pop("timeout", self._config.sql_timeout_seconds)
 
+        from sqlalchemy import create_engine, text
+
         engine = create_engine(connection_string)
         with engine.connect() as conn:
             conn = conn.execution_options(timeout=timeout)
@@ -385,6 +385,8 @@ class DataIngestorAgent(BaseAgent):
         headers = kwargs.pop("headers", {})
         auth = kwargs.pop("auth", None)
         timeout = kwargs.pop("timeout", self._config.rest_timeout_seconds)
+
+        import requests
 
         response = requests.get(
             url,

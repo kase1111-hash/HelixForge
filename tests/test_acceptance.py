@@ -15,8 +15,6 @@ from agents.data_ingestor_agent import DataIngestorAgent
 from agents.metadata_interpreter_agent import MetadataInterpreterAgent
 from agents.ontology_alignment_agent import OntologyAlignmentAgent
 from agents.fusion_agent import FusionAgent
-from agents.insight_generator_agent import InsightGeneratorAgent
-from agents.provenance_tracker_agent import ProvenanceTrackerAgent
 from models.schemas import JoinStrategy
 
 
@@ -128,7 +126,6 @@ class TestUserStory2_SemanticLabeling:
     - System infers data types (int, float, string, date, etc.)
     - System assigns semantic types (identifier, metric, timestamp, etc.)
     - System provides confidence scores for inferences
-    - Labels are editable/overridable by user
     """
 
     @pytest.fixture
@@ -192,7 +189,6 @@ class TestUserStory3_SchemaAlignment:
     - System identifies matching fields across datasets
     - System shows similarity scores for potential matches
     - System suggests canonical field names
-    - User can approve/reject/modify alignments
     """
 
     @pytest.fixture
@@ -385,170 +381,6 @@ class TestUserStory4_DatasetFusion:
         assert result.record_count == len(df1) + len(df2)
 
 
-class TestUserStory5_InsightGeneration:
-    """
-    User Story 5: As a data analyst, I want to generate insights from fused data
-    so that I can understand patterns and anomalies.
-
-    Acceptance Criteria:
-    - System computes descriptive statistics
-    - System identifies correlations between fields
-    - System detects outliers and anomalies
-    - System generates visualizations
-    """
-
-    @pytest.fixture
-    def insight_agent(self, insight_config, mock_openai_client):
-        agent = InsightGeneratorAgent(config=insight_config)
-        agent._openai_client = mock_openai_client
-        return agent
-
-    @pytest.fixture
-    def analysis_df(self):
-        """Create DataFrame for analysis."""
-        import numpy as np
-        np.random.seed(42)
-        return pd.DataFrame({
-            "id": range(100),
-            "value_a": np.random.normal(100, 20, 100),
-            "value_b": np.random.normal(50, 10, 100),
-            "category": np.random.choice(["A", "B", "C"], 100)
-        })
-
-    def test_ac1_computes_descriptive_statistics(self, insight_agent, analysis_df):
-        """AC1: System computes descriptive statistics."""
-        with patch.object(insight_agent, "_generate_visualizations", return_value=[]):
-            result = insight_agent.process("test", analysis_df, generate_visualizations=False)
-
-        assert result.statistics is not None
-        assert result.statistics.record_count == 100
-        assert "value_a" in result.statistics.field_stats
-
-    def test_ac2_identifies_correlations(self, insight_agent, analysis_df):
-        """AC2: System identifies correlations between fields."""
-        with patch.object(insight_agent, "_generate_visualizations", return_value=[]):
-            result = insight_agent.process("test", analysis_df, generate_visualizations=False)
-
-        assert result.correlations is not None
-
-    def test_ac3_detects_outliers(self, insight_agent):
-        """AC3: System detects outliers and anomalies."""
-        # Create data with clear outliers
-        df = pd.DataFrame({
-            "id": range(100),
-            "value": [10] * 98 + [1000, -500]  # Clear outliers
-        })
-
-        with patch.object(insight_agent, "_generate_visualizations", return_value=[]):
-            result = insight_agent.process("test", df, generate_visualizations=False)
-
-        assert result.outliers is not None
-        assert result.outliers.total_outliers > 0
-
-
-class TestUserStory6_ProvenanceTracking:
-    """
-    User Story 6: As a data analyst, I want to track data lineage
-    so that I can understand where each value came from.
-
-    Acceptance Criteria:
-    - System tracks original source for each field
-    - System records all transformations applied
-    - System provides confidence scores for derived data
-    - Lineage is queryable and exportable
-    """
-
-    @pytest.fixture
-    def provenance_agent(self, provenance_config):
-        return ProvenanceTrackerAgent(config=provenance_config)
-
-    @pytest.fixture
-    def sample_ingest_result(self):
-        from models.schemas import IngestResult, SourceType
-        return IngestResult(
-            dataset_id="source-dataset",
-            source="/data/source.csv",
-            source_type=SourceType.CSV,
-            schema=["id", "value", "name"],
-            dtypes={"id": "int64", "value": "float64", "name": "object"},
-            row_count=100,
-            sample_rows=5,
-            sample_data=[],
-            content_hash="abc123",
-            encoding="utf-8",
-            storage_path="/tmp/source.parquet"
-        )
-
-    def test_ac1_tracks_original_source(self, provenance_agent, sample_ingest_result):
-        """AC1: System tracks original source for each field."""
-        provenance_agent.record_ingestion(sample_ingest_result)
-
-        trace = provenance_agent.query_lineage(sample_ingest_result.dataset_id, "value")
-
-        assert trace is not None
-        assert len(trace.origins) == 1
-        assert trace.origins[0].source_file == sample_ingest_result.source
-
-    def test_ac2_records_transformations(self, provenance_agent, sample_ingest_result):
-        """AC2: System records all transformations applied."""
-        provenance_agent.record_ingestion(sample_ingest_result)
-
-        provenance_agent.record_transformation(
-            source_fields=[f"{sample_ingest_result.dataset_id}.value"],
-            target_field="normalized_value",
-            operation="transform",
-            parameters={"type": "normalize"},
-            fused_dataset_id="fused-1",
-            agent="FusionAgent"
-        )
-
-        trace = provenance_agent.query_lineage("fused-1", "normalized_value")
-
-        assert trace is not None
-        assert len(trace.transformations) == 1
-
-    def test_ac3_provides_confidence_scores(self, provenance_agent, sample_ingest_result):
-        """AC3: System provides confidence scores for derived data."""
-        provenance_agent.record_ingestion(sample_ingest_result)
-
-        # Apply multiple transformations
-        provenance_agent.record_transformation(
-            source_fields=[f"{sample_ingest_result.dataset_id}.value"],
-            target_field="step1",
-            operation="transform",
-            parameters={},
-            fused_dataset_id="fused-1",
-            agent="FusionAgent"
-        )
-
-        trace = provenance_agent.query_lineage("fused-1", "step1")
-
-        assert trace.confidence < 1.0  # Confidence should decay
-
-    def test_ac4_lineage_is_queryable(self, provenance_agent, sample_ingest_result):
-        """AC4: Lineage is queryable."""
-        provenance_agent.record_ingestion(sample_ingest_result)
-
-        # Query lineage
-        trace = provenance_agent.query_lineage(
-            sample_ingest_result.dataset_id,
-            "value"
-        )
-
-        assert trace is not None
-        assert trace.field == "value"
-
-    def test_ac4_lineage_graph_exportable(self, provenance_agent, sample_ingest_result):
-        """AC4: Lineage is exportable as graph."""
-        provenance_agent.record_ingestion(sample_ingest_result)
-
-        graph = provenance_agent.build_lineage_graph(sample_ingest_result.dataset_id)
-
-        assert "nodes" in graph
-        assert "edges" in graph
-        assert len(graph["nodes"]) > 0
-
-
 class TestEndToEndWorkflow:
     """
     End-to-end workflow test simulating a complete user session.
@@ -560,12 +392,10 @@ class TestEndToEndWorkflow:
         interpreter_config,
         alignment_config,
         fusion_config,
-        insight_config,
-        provenance_config,
         mock_openai_client,
         tmp_path
     ):
-        """Test complete workflow from ingestion to insights."""
+        """Test complete workflow from ingestion to alignment."""
         # Create test files
         csv1 = tmp_path / "employees.csv"
         csv1.write_text("emp_id,name,salary\n1,Alice,50000\n2,Bob,60000\n")
@@ -581,23 +411,14 @@ class TestEndToEndWorkflow:
         assert result1.row_count == 2
         assert result2.row_count == 2
 
-        # 2. Track provenance
-        provenance = ProvenanceTrackerAgent(config=provenance_config)
-        provenance.record_ingestion(result1)
-        provenance.record_ingestion(result2)
-
-        # Verify provenance tracked
-        trace = provenance.query_lineage("employees", "salary")
-        assert trace is not None
-
-        # 3. Get DataFrames
+        # 2. Get DataFrames
         df1 = ingestor.get_dataframe(result1.dataset_id)
         df2 = ingestor.get_dataframe(result2.dataset_id)
 
         assert df1 is not None
         assert df2 is not None
 
-        # 4. Interpret metadata
+        # 3. Interpret metadata
         interpreter = MetadataInterpreterAgent(config=interpreter_config)
         interpreter._openai_client = mock_openai_client
 
@@ -610,21 +431,11 @@ class TestEndToEndWorkflow:
         assert len(meta1.fields) == 3
         assert len(meta2.fields) == 2
 
-        # 5. Align schemas
+        # 4. Align schemas
         aligner = OntologyAlignmentAgent(config=alignment_config)
         alignment = aligner.process([meta1, meta2])
 
         assert alignment is not None
-
-        # 6. Generate insights on individual dataset
-        insight_gen = InsightGeneratorAgent(config=insight_config)
-        insight_gen._openai_client = mock_openai_client
-
-        with patch.object(insight_gen, "_generate_visualizations", return_value=[]):
-            insights = insight_gen.process("employees", df1, generate_visualizations=False)
-
-        assert insights is not None
-        assert insights.statistics.record_count == 2
 
         # Workflow completed successfully
         print("End-to-end workflow completed successfully!")

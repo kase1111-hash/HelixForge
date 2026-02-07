@@ -179,37 +179,6 @@ def fusion_config() -> Dict:
 
 
 @pytest.fixture
-def insight_config() -> Dict:
-    """Configuration for Insight Generator Agent."""
-    return {
-        "insights": {
-            "llm_model": "gpt-4o",
-            "correlation_method": "pearson",
-            "correlation_significance_threshold": 0.05,
-            "outlier_method": "iqr",
-            "outlier_iqr_multiplier": 1.5,
-            "clustering_algorithm": "kmeans",
-            "clustering_k_range": [2, 5],
-            "output_path": tempfile.mkdtemp()
-        }
-    }
-
-
-@pytest.fixture
-def provenance_config() -> Dict:
-    """Configuration for Provenance Tracker Agent."""
-    return {
-        "provenance": {
-            "graph_store": "neo4j",
-            "graph_uri": "neo4j://localhost:7687",
-            "report_format": "json",
-            "report_output_path": tempfile.mkdtemp(),
-            "confidence_decay_per_step": 0.02
-        }
-    }
-
-
-@pytest.fixture
 def sample_ingest_result():
     """Sample IngestResult for testing."""
     from models.schemas import IngestResult, SourceType

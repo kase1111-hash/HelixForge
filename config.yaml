@@ -8,24 +8,6 @@ llm:
   temperature: 0.2
   max_tokens: 4096
 
-# Vector Store
-vector_store:
-  provider: "weaviate"
-  url: "http://localhost:8080"
-  api_key: "${WEAVIATE_API_KEY}"
-
-# Graph Store (Ontology + Provenance)
-graph_store:
-  provider: "neo4j"
-  uri: "neo4j://localhost:7687"
-  user: "neo4j"
-  password: "${NEO4J_PASSWORD}"
-
-# Relational Database (Metadata + Jobs)
-database:
-  url: "postgresql://helixforge:${DB_PASSWORD}@localhost:5432/helixforge"
-  pool_size: 10
-
 # Processing Settings
 processing:
   confidence_threshold: 0.80
@@ -38,16 +20,9 @@ fusion:
   similarity_threshold: 0.85
   imputation_method: "knn"
 
-# Insight Settings
-insights:
-  correlation_significance: 0.05
-  outlier_method: "iqr"
-  visualization_format: "plotly"
-
 # Output Settings
 output:
   artifact_dir: "./outputs/"
-  report_format: "html"
 
 # API Settings
 api:

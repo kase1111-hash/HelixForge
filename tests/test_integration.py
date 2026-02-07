@@ -8,8 +8,6 @@ from agents.data_ingestor_agent import DataIngestorAgent
 from agents.metadata_interpreter_agent import MetadataInterpreterAgent
 from agents.ontology_alignment_agent import OntologyAlignmentAgent
 from agents.fusion_agent import FusionAgent
-from agents.insight_generator_agent import InsightGeneratorAgent
-from agents.provenance_tracker_agent import ProvenanceTrackerAgent
 from models.schemas import JoinStrategy
 
 
@@ -18,15 +16,13 @@ class TestAgentPipeline:
 
     @pytest.fixture
     def all_configs(self, ingestor_config, interpreter_config, alignment_config,
-                    fusion_config, insight_config, provenance_config):
+                    fusion_config):
         """Return all agent configs."""
         return {
             "ingestor": ingestor_config,
             "interpreter": interpreter_config,
             "alignment": alignment_config,
             "fusion": fusion_config,
-            "insight": insight_config,
-            "provenance": provenance_config
         }
 
     @pytest.fixture
@@ -121,9 +117,9 @@ class TestAgentPipeline:
         alignment = aligner.process([emp_metadata, dept_metadata])
 
         assert alignment is not None
-        assert len(alignment.datasets) == 2
-        assert "employees" in alignment.datasets
-        assert "departments" in alignment.datasets
+        assert len(alignment.datasets_aligned) == 2
+        assert "employees" in alignment.datasets_aligned
+        assert "departments" in alignment.datasets_aligned
 
     def test_full_fusion_pipeline(self, all_configs, employee_csv, department_csv, mock_openai_client):
         """Test full pipeline from ingestion to fusion."""
@@ -162,48 +158,6 @@ class TestAgentPipeline:
         assert fusion_result is not None
         assert fusion_result.fused_dataset_id is not None
         assert fusion_result.total_records > 0
-
-    def test_insight_generation_after_fusion(self, all_configs, employee_csv, mock_openai_client):
-        """Test insight generation on fused data."""
-        # Initialize agents
-        ingestor = DataIngestorAgent(config=all_configs["ingestor"])
-        insight_gen = InsightGeneratorAgent(config=all_configs["insight"])
-        insight_gen._openai_client = mock_openai_client
-
-        # Ingest data
-        result = ingestor.ingest_file(employee_csv)
-        df = ingestor.get_dataframe(result.dataset_id)
-
-        # Generate insights
-        with patch.object(insight_gen, "_generate_visualizations", return_value=[]):
-            insights = insight_gen.process(
-                result.dataset_id,
-                df,
-                generate_visualizations=False
-            )
-
-        assert insights is not None
-        assert insights.statistics is not None
-        assert insights.statistics.record_count == 5
-
-    def test_provenance_tracking_through_pipeline(self, all_configs, employee_csv, mock_openai_client):
-        """Test provenance is tracked through pipeline operations."""
-        # Initialize agents
-        ingestor = DataIngestorAgent(config=all_configs["ingestor"])
-        provenance = ProvenanceTrackerAgent(config=all_configs["provenance"])
-
-        # Ingest data
-        result = ingestor.ingest_file(employee_csv)
-
-        # Record ingestion in provenance
-        provenance.record_ingestion(result)
-
-        # Verify provenance was recorded
-        for field in result.schema_fields:
-            trace = provenance.query_lineage(result.dataset_id, field)
-            assert trace is not None
-            assert trace.field == field
-            assert len(trace.origins) == 1
 
     def test_event_propagation_between_agents(self, all_configs, employee_csv, mock_openai_client):
         """Test events propagate between agents."""
@@ -263,33 +217,6 @@ class TestAgentPipeline:
             metadata = interpreter.process(result.dataset_id, df)
 
         assert metadata is not None
-
-    def test_transformation_tracking_in_provenance(self, all_configs, employee_csv, mock_openai_client):
-        """Test that transformations are tracked in provenance."""
-        ingestor = DataIngestorAgent(config=all_configs["ingestor"])
-        provenance = ProvenanceTrackerAgent(config=all_configs["provenance"])
-
-        # Ingest source data
-        result = ingestor.ingest_file(employee_csv)
-        provenance.record_ingestion(result)
-
-        # Simulate a transformation
-        provenance.record_transformation(
-            source_fields=[f"{result.dataset_id}.salary"],
-            target_field="salary_normalized",
-            operation="transform",
-            parameters={"type": "min_max_normalization"},
-            fused_dataset_id="fused-001",
-            agent="FusionAgent"
-        )
-
-        # Query lineage for transformed field
-        trace = provenance.query_lineage("fused-001", "salary_normalized")
-
-        assert trace is not None
-        assert trace.lineage_depth == 1
-        assert len(trace.transformations) == 1
-        assert trace.transformations[0].operation == "transform"
 
 
 class TestAPIIntegration:

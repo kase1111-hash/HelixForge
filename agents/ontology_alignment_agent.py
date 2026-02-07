@@ -1,7 +1,7 @@
 """Ontology Alignment Agent for HelixForge.
 
 Identifies semantic relationships between fields across
-different datasets using embedding similarity and graph construction.
+different datasets using embedding similarity.
 """
 
 import uuid
@@ -23,8 +23,8 @@ from utils.embeddings import cosine_similarity
 class OntologyAlignmentAgent(BaseAgent):
     """Agent for aligning ontologies across datasets.
 
-    Computes semantic similarity between fields and builds
-    a unified ontology graph representing relationships.
+    Computes semantic similarity between fields to identify
+    matching columns across different data sources.
     """
 
     def __init__(
@@ -34,7 +34,6 @@ class OntologyAlignmentAgent(BaseAgent):
     ):
         super().__init__(config, correlation_id)
         self._config = AlignmentConfig(**self.config.get("alignment", {}))
-        self._graph_client = None
 
     @property
     def event_type(self) -> str:
@@ -95,15 +94,11 @@ class OntologyAlignmentAgent(BaseAgent):
                     if field_key not in matched_fields:
                         unmatched_fields.append(field_key)
 
-            # Build ontology graph
-            graph_uri = self._build_ontology_graph(metadata_list, all_alignments)
-
             result = AlignmentResult(
                 alignment_job_id=job_id,
                 datasets_aligned=[m.dataset_id for m in metadata_list],
                 alignments=all_alignments,
                 unmatched_fields=unmatched_fields,
-                ontology_graph_uri=graph_uri
             )
 
             # Publish event
@@ -184,7 +179,7 @@ class OntologyAlignmentAgent(BaseAgent):
         # Use embeddings if available
         if field_a.embedding and field_b.embedding:
             try:
-                return cosine_similarity(field_a.embedding, field_b.embedding)
+                return min(cosine_similarity(field_a.embedding, field_b.embedding), 1.0)
             except ValueError:
                 pass
 
@@ -217,7 +212,7 @@ class OntologyAlignmentAgent(BaseAgent):
         if field_a.data_type != field_b.data_type:
             combined *= 0.9
 
-        return combined
+        return min(combined, 1.0)
 
     def _classify_alignment(self, similarity: float) -> AlignmentType:
         """Classify alignment type based on similarity.
@@ -232,7 +227,7 @@ class OntologyAlignmentAgent(BaseAgent):
             return AlignmentType.EXACT
         elif similarity >= self._config.synonym_threshold:
             return AlignmentType.SYNONYM
-        elif similarity >= 0.85:
+        elif similarity >= 0.80:
             return AlignmentType.RELATED
         elif similarity >= self._config.similarity_threshold:
             return AlignmentType.PARTIAL
@@ -307,92 +302,3 @@ class OntologyAlignmentAgent(BaseAgent):
 
         return resolved
 
-    def _build_ontology_graph(
-        self,
-        metadata_list: List[DatasetMetadata],
-        alignments: List[FieldAlignment]
-    ) -> Optional[str]:
-        """Build ontology graph in Neo4j.
-
-        Args:
-            metadata_list: Dataset metadata.
-            alignments: Field alignments.
-
-        Returns:
-            Graph URI or None if graph store unavailable.
-        """
-        try:
-            from neo4j import GraphDatabase
-
-            uri = self._config.graph_uri
-            driver = GraphDatabase.driver(uri)
-
-            with driver.session() as session:
-                # Create dataset nodes
-                for meta in metadata_list:
-                    session.run(
-                        """
-                        MERGE (d:Dataset {id: $id})
-                        SET d.name = $name, d.domain = $domain
-                        """,
-                        id=meta.dataset_id,
-                        name=meta.dataset_id,
-                        domain=meta.domain_tags[0] if meta.domain_tags else "unknown"
-                    )
-
-                    # Create field nodes
-                    for field in meta.fields:
-                        session.run(
-                            """
-                            MERGE (f:Field {id: $id})
-                            SET f.name = $name, f.semantic_label = $label,
-                                f.dataset_id = $dataset_id
-                            WITH f
-                            MATCH (d:Dataset {id: $dataset_id})
-                            MERGE (f)-[:BELONGS_TO]->(d)
-                            """,
-                            id=f"{meta.dataset_id}.{field.field_name}",
-                            name=field.field_name,
-                            label=field.semantic_label,
-                            dataset_id=meta.dataset_id
-                        )
-
-                # Create alignment relationships
-                for alignment in alignments:
-                    session.run(
-                        """
-                        MATCH (a:Field {id: $source_id})
-                        MATCH (b:Field {id: $target_id})
-                        MERGE (a)-[r:ALIGNS_WITH]->(b)
-                        SET r.similarity = $similarity, r.type = $type
-                        """,
-                        source_id=f"{alignment.source_dataset}.{alignment.source_field}",
-                        target_id=f"{alignment.target_dataset}.{alignment.target_field}",
-                        similarity=alignment.similarity,
-                        type=alignment.alignment_type.value
-                    )
-
-            driver.close()
-            return uri
-
-        except Exception as e:
-            self.logger.warning(f"Failed to build ontology graph: {e}")
-            return None
-
-    def validate_alignment(
-        self,
-        alignment_id: str,
-        validated: bool
-    ) -> bool:
-        """Mark an alignment as validated.
-
-        Args:
-            alignment_id: ID of the alignment.
-            validated: Validation status.
-
-        Returns:
-            True if successful.
-        """
-        # This would update the alignment in storage
-        self.logger.info(f"Alignment {alignment_id} validated: {validated}")
-        return True

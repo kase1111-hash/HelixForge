@@ -71,25 +71,6 @@ async def fuse_datasets(request: FusionRequest):
             "df": fusion_agent.get_fused_dataframe(result.fused_dataset_id)
         }
 
-        # Record provenance
-        provenance = state.get("provenance")
-        if provenance:
-            field_mappings = {}
-            for field in result.merged_fields:
-                sources = []
-                for alignment in alignment_result.alignments:
-                    if alignment.target_field == field or alignment.source_field == field:
-                        sources.append(f"{alignment.source_dataset}.{alignment.source_field}")
-                        sources.append(f"{alignment.target_dataset}.{alignment.target_field}")
-                field_mappings[field] = list(set(sources))
-
-            provenance.record_fusion(
-                source_datasets=result.source_datasets,
-                fused_dataset_id=result.fused_dataset_id,
-                join_strategy=result.join_strategy.value,
-                field_mappings=field_mappings
-            )
-
         return result
 
     except Exception as e:
