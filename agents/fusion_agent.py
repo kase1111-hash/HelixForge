@@ -1,7 +1,12 @@
 """Fusion Agent for HelixForge.
 
-Merges aligned datasets using various join strategies,
-applies transformations, and handles missing values.
+Merges aligned datasets using two primary join strategies:
+  - exact_key: join on a shared key column (the simple, reliable case)
+  - semantic_similarity: join on record-level similarity (the
+    differentiating case that makes HelixForge unique)
+
+Probabilistic and temporal strategies are gated behind the
+experimental_strategies config flag.
 """
 
 import os
@@ -10,11 +15,11 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-from sklearn.impute import KNNImputer
 
 from agents.base_agent import BaseAgent
 from models.schemas import (
     AlignmentResult,
+    AlignmentType,
     FieldAlignment,
     FusionConfig,
     FusionResult,
@@ -41,8 +46,8 @@ BUILTIN_TRANSFORMS: Dict[str, Callable] = {
 class FusionAgent(BaseAgent):
     """Agent for fusing aligned datasets.
 
-    Supports multiple join strategies, value transformations,
-    and intelligent missing value imputation.
+    Supports exact_key and semantic_similarity join strategies,
+    value transformations, and missing value imputation.
     """
 
     def __init__(
@@ -69,7 +74,10 @@ class FusionAgent(BaseAgent):
         Args:
             dataframes: Dictionary mapping dataset_id to DataFrame.
             alignment_result: Result from ontology alignment.
-            **kwargs: Additional options.
+            **kwargs: Additional options:
+                join_strategy: Override default strategy.
+                key_column: Column name to use as join key (for exact_key).
+                imputation_method: Override default imputation.
 
         Returns:
             FusionResult with merged dataset info.
@@ -78,9 +86,11 @@ class FusionAgent(BaseAgent):
 
         fused_id = str(uuid.uuid4())
         transformations = []
+        key_column = kwargs.get("key_column")
+        effective_strategy = None  # Track what strategy was actually used
 
         try:
-            # Get join strategy
+            # Resolve strategy
             strategy = kwargs.get("join_strategy") or self._config.default_join_strategy
             if isinstance(strategy, str):
                 strategy = JoinStrategy(strategy)
@@ -102,8 +112,16 @@ class FusionAgent(BaseAgent):
                 ]
 
                 if relevant_alignments:
+                    # Resolve auto strategy per merge
+                    effective_strategy = strategy
+                    if strategy == JoinStrategy.AUTO:
+                        effective_strategy = self._detect_strategy(
+                            relevant_alignments, fused_df, df_to_merge, key_column
+                        )
+
                     fused_df, trans = self._merge_datasets(
-                        fused_df, df_to_merge, relevant_alignments, strategy
+                        fused_df, df_to_merge, relevant_alignments,
+                        effective_strategy, key_column
                     )
                     transformations.extend(trans)
                     source_datasets.append(dataset_id)
@@ -124,13 +142,18 @@ class FusionAgent(BaseAgent):
             # Save fused dataset
             storage_path = self._save_fused_dataset(fused_df, fused_id)
 
+            # Report the strategy that was actually used
+            report_strategy = effective_strategy if effective_strategy else strategy
+            if report_strategy == JoinStrategy.AUTO:
+                report_strategy = JoinStrategy.EXACT_KEY
+
             result = FusionResult(
                 fused_dataset_id=fused_id,
                 source_datasets=source_datasets,
                 record_count=len(fused_df),
                 field_count=len(fused_df.columns),
                 merged_fields=list(fused_df.columns),
-                join_strategy=strategy,
+                join_strategy=report_strategy,
                 transformations_applied=transformations,
                 imputation_summary=imputation_summary,
                 storage_path=storage_path
@@ -154,22 +177,50 @@ class FusionAgent(BaseAgent):
             raise
 
     def get_fused_dataframe(self, fused_id: str) -> Optional[pd.DataFrame]:
-        """Get a fused DataFrame by ID.
-
-        Args:
-            fused_id: Fused dataset ID.
-
-        Returns:
-            DataFrame or None.
-        """
+        """Get a fused DataFrame by ID."""
         return self._dataframes.get(fused_id)
+
+    # ------------------------------------------------------------------ #
+    #  Strategy detection                                                  #
+    # ------------------------------------------------------------------ #
+
+    def _detect_strategy(
+        self,
+        alignments: List[FieldAlignment],
+        df_left: pd.DataFrame,
+        df_right: pd.DataFrame,
+        key_column: Optional[str] = None,
+    ) -> JoinStrategy:
+        """Auto-detect the best join strategy.
+
+        Uses exact_key when a shared key column is detected (either
+        user-specified or from an exact/synonym alignment), otherwise
+        falls back to semantic_similarity.
+        """
+        if key_column:
+            return JoinStrategy.EXACT_KEY
+
+        # Check if any alignment is exact or synonym with a column in both DFs
+        for a in alignments:
+            if a.alignment_type in (AlignmentType.EXACT, AlignmentType.SYNONYM):
+                if a.source_field in df_left.columns and a.target_field in df_right.columns:
+                    return JoinStrategy.EXACT_KEY
+                if a.target_field in df_left.columns and a.source_field in df_right.columns:
+                    return JoinStrategy.EXACT_KEY
+
+        return JoinStrategy.SEMANTIC_SIMILARITY
+
+    # ------------------------------------------------------------------ #
+    #  Merge logic                                                         #
+    # ------------------------------------------------------------------ #
 
     def _merge_datasets(
         self,
         df_left: pd.DataFrame,
         df_right: pd.DataFrame,
         alignments: List[FieldAlignment],
-        strategy: JoinStrategy
+        strategy: JoinStrategy,
+        key_column: Optional[str] = None,
     ) -> Tuple[pd.DataFrame, List[TransformationLog]]:
         """Merge two datasets using alignments.
 
@@ -178,6 +229,7 @@ class FusionAgent(BaseAgent):
             df_right: Right DataFrame.
             alignments: Field alignments between datasets.
             strategy: Join strategy to use.
+            key_column: Optional user-specified key column name.
 
         Returns:
             Tuple of (merged DataFrame, transformation logs).
@@ -194,77 +246,183 @@ class FusionAgent(BaseAgent):
                 if trans:
                     transformations.append(trans)
 
-        # Identify join columns
-        join_cols_left = []
-        join_cols_right = []
+        # Build column mapping: right_col -> left_col
+        col_map = self._build_column_map(df_left, df_right, alignments)
 
-        for alignment in alignments:
-            if alignment.alignment_type.value in ("exact", "synonym"):
-                # Determine which side has which column
-                if alignment.source_field in df_left.columns:
-                    join_cols_left.append(alignment.source_field)
-                    join_cols_right.append(alignment.target_field)
-                elif alignment.target_field in df_left.columns:
-                    join_cols_left.append(alignment.target_field)
-                    join_cols_right.append(alignment.source_field)
-
-        if strategy == JoinStrategy.EXACT_KEY and join_cols_left:
-            # Standard merge on key columns
-            merged = pd.merge(
-                df_left, df_right,
-                left_on=join_cols_left,
-                right_on=join_cols_right,
-                how="outer",
-                suffixes=("", "_dup")
+        if strategy == JoinStrategy.EXACT_KEY:
+            merged = self._exact_key_merge(
+                df_left, df_right, alignments, col_map, key_column
             )
-            # Remove duplicate columns
-            merged = merged.loc[:, ~merged.columns.str.endswith("_dup")]
 
         elif strategy == JoinStrategy.SEMANTIC_SIMILARITY:
-            # Semantic join based on similarity
             merged = self._semantic_join(df_left, df_right, alignments)
 
         elif strategy == JoinStrategy.PROBABILISTIC:
-            # Probabilistic matching
-            merged = self._probabilistic_join(df_left, df_right, alignments)
+            if not self._config.experimental_strategies:
+                self.logger.warning(
+                    "Probabilistic strategy is experimental and disabled. "
+                    "Falling back to semantic_similarity."
+                )
+                merged = self._semantic_join(df_left, df_right, alignments)
+            else:
+                merged = self._semantic_join(df_left, df_right, alignments)
 
         elif strategy == JoinStrategy.TEMPORAL:
-            # Time-based alignment
-            merged = self._temporal_join(df_left, df_right, alignments)
+            if not self._config.experimental_strategies:
+                self.logger.warning(
+                    "Temporal strategy is experimental and disabled. "
+                    "Falling back to semantic_similarity."
+                )
+                merged = self._semantic_join(df_left, df_right, alignments)
+            else:
+                merged = self._temporal_join(df_left, df_right, alignments)
 
         else:
-            # Default: concatenate
             merged = pd.concat([df_left, df_right], ignore_index=True)
 
         return merged, transformations
+
+    def _build_column_map(
+        self,
+        df_left: pd.DataFrame,
+        df_right: pd.DataFrame,
+        alignments: List[FieldAlignment],
+    ) -> Dict[str, str]:
+        """Build mapping from right column names to left column names.
+
+        Returns:
+            Dict where key=right_col, value=left_col.
+        """
+        col_map: Dict[str, str] = {}
+        for a in alignments:
+            if a.source_field in df_left.columns and a.target_field in df_right.columns:
+                col_map[a.target_field] = a.source_field
+            elif a.target_field in df_left.columns and a.source_field in df_right.columns:
+                col_map[a.source_field] = a.target_field
+        return col_map
+
+    def _exact_key_merge(
+        self,
+        df_left: pd.DataFrame,
+        df_right: pd.DataFrame,
+        alignments: List[FieldAlignment],
+        col_map: Dict[str, str],
+        key_column: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """Merge on a shared key column, unifying aligned columns.
+
+        Steps:
+          1. Identify the key column (user-specified or auto-detected)
+          2. Rename right columns to match left column names (via alignment)
+          3. Merge on the shared key
+          4. Coalesce overlapping columns (prefer left non-null, then right)
+        """
+        # 1. Determine key column
+        key_left, key_right = self._find_key_columns(
+            df_left, df_right, alignments, col_map, key_column
+        )
+
+        if key_left is None:
+            # No key found, fall back to concat
+            self.logger.warning("No key column found for exact_key merge, falling back to concat")
+            return pd.concat([df_left, df_right], ignore_index=True)
+
+        # 2. Rename right columns to match left names
+        rename_map = {}
+        for right_col, left_col in col_map.items():
+            if right_col != key_right or left_col != key_left:
+                # For the key column, we rename it to match left key
+                # For value columns, we rename to match left names
+                rename_map[right_col] = left_col
+            else:
+                # Key column: rename to match left key name
+                rename_map[right_col] = key_left
+
+        df_right_renamed = df_right.rename(columns=rename_map)
+
+        # 3. Merge on the key
+        merged = pd.merge(
+            df_left, df_right_renamed,
+            on=key_left, how="outer",
+            suffixes=("", "_right")
+        )
+
+        # 4. Coalesce overlapping columns (prefer left, fill with right)
+        for col in list(merged.columns):
+            if col.endswith("_right"):
+                base_col = col[:-6]  # Remove "_right"
+                if base_col in merged.columns:
+                    merged[base_col] = merged[base_col].fillna(merged[col])
+                    merged = merged.drop(columns=[col])
+                else:
+                    # No base column, just rename
+                    merged = merged.rename(columns={col: base_col})
+
+        return merged
+
+    def _find_key_columns(
+        self,
+        df_left: pd.DataFrame,
+        df_right: pd.DataFrame,
+        alignments: List[FieldAlignment],
+        col_map: Dict[str, str],
+        key_column: Optional[str] = None,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Find the key column pair for exact_key merge.
+
+        Returns:
+            (left_key_name, right_key_name) or (None, None).
+        """
+        if key_column:
+            # User specified the key - find corresponding right column
+            if key_column in df_left.columns:
+                # Find the right-side equivalent
+                for right_col, left_col in col_map.items():
+                    if left_col == key_column:
+                        return key_column, right_col
+                # Same name in both datasets
+                if key_column in df_right.columns:
+                    return key_column, key_column
+            return None, None
+
+        # Auto-detect: prefer exact/synonym alignments
+        for a in alignments:
+            if a.alignment_type in (AlignmentType.EXACT, AlignmentType.SYNONYM):
+                if a.source_field in df_left.columns and a.target_field in df_right.columns:
+                    return a.source_field, a.target_field
+                if a.target_field in df_left.columns and a.source_field in df_right.columns:
+                    return a.target_field, a.source_field
+
+        # Fall back to first alignment with columns in both DFs
+        for a in alignments:
+            if a.source_field in df_left.columns and a.target_field in df_right.columns:
+                return a.source_field, a.target_field
+            if a.target_field in df_left.columns and a.source_field in df_right.columns:
+                return a.target_field, a.source_field
+
+        return None, None
+
+    # ------------------------------------------------------------------ #
+    #  Transformations                                                     #
+    # ------------------------------------------------------------------ #
 
     def _apply_transformation(
         self,
         df: pd.DataFrame,
         alignment: FieldAlignment
     ) -> Tuple[pd.DataFrame, Optional[TransformationLog]]:
-        """Apply transformation to a field.
-
-        Args:
-            df: DataFrame.
-            alignment: Alignment with transformation hint.
-
-        Returns:
-            Tuple of (transformed DataFrame, transformation log).
-        """
+        """Apply transformation to a field."""
         if not alignment.transformation_hint:
             return df, None
 
         hint = alignment.transformation_hint
 
-        # Parse transformation hint
         if hint.startswith("unit_conversion:"):
             transform_name = hint.split(":")[1]
 
             # Handle inverse transforms
             if transform_name.endswith("_inverse"):
                 base_name = transform_name.replace("_inverse", "")
-                # Find inverse transform
                 inverse_map = {
                     "celsius_to_fahrenheit": "fahrenheit_to_celsius",
                     "kg_to_lb": "lb_to_kg",
@@ -294,7 +452,6 @@ class FusionAgent(BaseAgent):
                     )
 
         elif hint.startswith("type_cast:"):
-            # Handle type casting
             types = hint.split(":")[1].split("->")
             if len(types) == 2:
                 target_type = types[1]
@@ -322,25 +479,20 @@ class FusionAgent(BaseAgent):
 
         return df, None
 
+    # ------------------------------------------------------------------ #
+    #  Semantic join                                                       #
+    # ------------------------------------------------------------------ #
+
     def _semantic_join(
         self,
         df_left: pd.DataFrame,
         df_right: pd.DataFrame,
         alignments: List[FieldAlignment]
     ) -> pd.DataFrame:
-        """Join datasets based on semantic similarity.
-
-        Args:
-            df_left: Left DataFrame.
-            df_right: Right DataFrame.
-            alignments: Field alignments.
-
-        Returns:
-            Merged DataFrame.
-        """
+        """Join datasets based on record-level semantic similarity."""
         from utils.similarity import record_similarity
 
-        # Build field mapping
+        # Build field mapping: left_col -> right_col
         field_map = {}
         for a in alignments:
             if a.source_field in df_left.columns and a.target_field in df_right.columns:
@@ -358,7 +510,6 @@ class FusionAgent(BaseAgent):
             best_sim = threshold
 
             for j, right_row in df_right.iterrows():
-                # Create comparable dicts
                 left_dict = {k: left_row[k] for k in field_map.keys() if k in left_row}
                 right_dict = {field_map[k]: right_row[field_map[k]] for k in field_map.keys() if field_map[k] in right_row}
                 right_dict_renamed = {k: right_dict[field_map[k]] for k in field_map.keys() if field_map[k] in right_dict}
@@ -370,46 +521,51 @@ class FusionAgent(BaseAgent):
 
             matched_indices.append((i, best_match))
 
-        # Build merged dataframe
+        # Build merged DataFrame
         merged_rows = []
         used_right = set()
 
         for left_idx, right_idx in matched_indices:
-            left_row = df_left.iloc[left_idx].to_dict()
+            left_row = df_left.loc[left_idx].to_dict()
             if right_idx is not None:
-                right_row = df_right.iloc[right_idx].to_dict()
-                # Merge rows, preferring left values
-                merged = {**right_row, **left_row}
+                right_row = df_right.loc[right_idx].to_dict()
+                # Rename right columns to left names where aligned
+                renamed_right = {}
+                reverse_map = {v: k for k, v in field_map.items()}
+                for col, val in right_row.items():
+                    if col in reverse_map:
+                        renamed_right[reverse_map[col]] = val
+                    else:
+                        renamed_right[col] = val
+                # Merge: prefer left non-null, then right
+                merged = {**renamed_right, **{k: v for k, v in left_row.items() if pd.notna(v)}}
+                # Fill remaining nulls from right
+                for k, v in renamed_right.items():
+                    if k in merged and pd.isna(merged[k]) and pd.notna(v):
+                        merged[k] = v
                 merged_rows.append(merged)
                 used_right.add(right_idx)
             else:
                 merged_rows.append(left_row)
 
-        # Add unmatched right rows
+        # Add unmatched right rows (renamed)
+        reverse_map = {v: k for k, v in field_map.items()}
         for j in range(len(df_right)):
             if j not in used_right:
-                merged_rows.append(df_right.iloc[j].to_dict())
+                right_row = df_right.iloc[j].to_dict()
+                renamed = {}
+                for col, val in right_row.items():
+                    if col in reverse_map:
+                        renamed[reverse_map[col]] = val
+                    else:
+                        renamed[col] = val
+                merged_rows.append(renamed)
 
         return pd.DataFrame(merged_rows)
 
-    def _probabilistic_join(
-        self,
-        df_left: pd.DataFrame,
-        df_right: pd.DataFrame,
-        alignments: List[FieldAlignment]
-    ) -> pd.DataFrame:
-        """Probabilistic record matching.
-
-        Args:
-            df_left: Left DataFrame.
-            df_right: Right DataFrame.
-            alignments: Field alignments.
-
-        Returns:
-            Merged DataFrame.
-        """
-        # Simplified probabilistic join using weighted field similarities
-        return self._semantic_join(df_left, df_right, alignments)
+    # ------------------------------------------------------------------ #
+    #  Temporal join (experimental)                                        #
+    # ------------------------------------------------------------------ #
 
     def _temporal_join(
         self,
@@ -417,17 +573,7 @@ class FusionAgent(BaseAgent):
         df_right: pd.DataFrame,
         alignments: List[FieldAlignment]
     ) -> pd.DataFrame:
-        """Join based on temporal alignment.
-
-        Args:
-            df_left: Left DataFrame.
-            df_right: Right DataFrame.
-            alignments: Field alignments.
-
-        Returns:
-            Merged DataFrame.
-        """
-        # Find timestamp columns
+        """Join based on temporal alignment (experimental)."""
         timestamp_cols = []
         for a in alignments:
             if "time" in a.source_field.lower() or "date" in a.source_field.lower():
@@ -438,11 +584,11 @@ class FusionAgent(BaseAgent):
 
         left_ts, right_ts = timestamp_cols[0]
 
-        # Convert to datetime
+        df_left = df_left.copy()
+        df_right = df_right.copy()
         df_left[left_ts] = pd.to_datetime(df_left[left_ts], errors="coerce")
         df_right[right_ts] = pd.to_datetime(df_right[right_ts], errors="coerce")
 
-        # Use merge_asof for temporal alignment
         df_left_sorted = df_left.sort_values(left_ts)
         df_right_sorted = df_right.sort_values(right_ts)
 
@@ -457,31 +603,26 @@ class FusionAgent(BaseAgent):
 
         return merged
 
+    # ------------------------------------------------------------------ #
+    #  Imputation                                                          #
+    # ------------------------------------------------------------------ #
+
     def _impute_missing(
         self,
         df: pd.DataFrame,
         method: ImputationMethod
     ) -> Tuple[pd.DataFrame, ImputationSummary]:
-        """Impute missing values.
-
-        Args:
-            df: DataFrame with missing values.
-            method: Imputation method.
-
-        Returns:
-            Tuple of (imputed DataFrame, imputation summary).
-        """
+        """Impute missing values in numeric columns."""
         df = df.copy()
         fields_imputed = {}
         total_filled = 0
 
-        # Get numeric columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
         # Filter columns with acceptable null ratio
         cols_to_impute = []
         for col in numeric_cols:
-            null_ratio = df[col].isna().sum() / len(df)
+            null_ratio = df[col].isna().sum() / len(df) if len(df) > 0 else 0
             if 0 < null_ratio <= self._config.max_null_ratio_for_inclusion:
                 cols_to_impute.append(col)
 
@@ -492,7 +633,6 @@ class FusionAgent(BaseAgent):
                 method_used=method
             )
 
-        # Count nulls before
         null_counts_before = {col: df[col].isna().sum() for col in cols_to_impute}
 
         if method == ImputationMethod.MEAN:
@@ -510,6 +650,7 @@ class FusionAgent(BaseAgent):
                     df[col] = df[col].fillna(mode_val[0])
 
         elif method == ImputationMethod.KNN:
+            from sklearn.impute import KNNImputer
             imputer = KNNImputer(n_neighbors=self._config.knn_neighbors)
             df[cols_to_impute] = imputer.fit_transform(df[cols_to_impute])
 
@@ -526,20 +667,16 @@ class FusionAgent(BaseAgent):
             method_used=method
         )
 
+    # ------------------------------------------------------------------ #
+    #  Storage                                                             #
+    # ------------------------------------------------------------------ #
+
     def _save_fused_dataset(
         self,
         df: pd.DataFrame,
         fused_id: str
     ) -> str:
-        """Save fused dataset to disk.
-
-        Args:
-            df: Fused DataFrame.
-            fused_id: Fused dataset ID.
-
-        Returns:
-            Storage path.
-        """
+        """Save fused dataset to disk."""
         output_dir = self._config.output_path
         os.makedirs(output_dir, exist_ok=True)
 

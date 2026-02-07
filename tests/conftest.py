@@ -167,12 +167,12 @@ def fusion_config() -> Dict:
     """Configuration for Fusion Agent."""
     return {
         "fusion": {
-            "default_join_strategy": "semantic_similarity",
+            "default_join_strategy": "auto",
             "similarity_join_threshold": 0.80,
             "imputation_method": "mean",
             "knn_neighbors": 3,
             "max_null_ratio_for_inclusion": 0.5,
-            "output_format": "parquet",
+            "output_format": "csv",
             "output_path": tempfile.mkdtemp()
         }
     }

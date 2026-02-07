@@ -54,6 +54,7 @@ class AlignmentType(str, Enum):
 
 class JoinStrategy(str, Enum):
     """Join strategies for fusion."""
+    AUTO = "auto"
     EXACT_KEY = "exact_key"
     SEMANTIC_SIMILARITY = "semantic_similarity"
     PROBABILISTIC = "probabilistic"
@@ -242,15 +243,19 @@ class FusionResult(BaseModel):
 
 class FusionConfig(BaseModel):
     """Configuration for Fusion Agent."""
-    default_join_strategy: JoinStrategy = Field(default=JoinStrategy.SEMANTIC_SIMILARITY)
+    default_join_strategy: JoinStrategy = Field(default=JoinStrategy.AUTO)
     similarity_join_threshold: float = Field(default=0.85)
     probabilistic_match_threshold: float = Field(default=0.75)
     temporal_tolerance_seconds: int = Field(default=3600)
-    imputation_method: ImputationMethod = Field(default=ImputationMethod.KNN)
+    imputation_method: ImputationMethod = Field(default=ImputationMethod.MEAN)
     knn_neighbors: int = Field(default=5)
     max_null_ratio_for_inclusion: float = Field(default=0.5)
-    output_format: str = Field(default="parquet")
+    output_format: str = Field(default="csv")
     output_path: str = Field(default="./data/fused/")
+    experimental_strategies: bool = Field(
+        default=False,
+        description="Enable probabilistic and temporal join strategies"
+    )
 
 
 # API Request/Response Models

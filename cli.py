@@ -3,6 +3,7 @@
 Usage:
     python cli.py describe <file> [--format json|table] [--provider mock|openai]
     python cli.py align <file1> <file2> [--format json|table] [--provider mock|openai]
+    python cli.py fuse <file1> <file2> [--key id] [--strategy auto|exact|semantic] [--output fused.csv]
     python cli.py ingest <file> [--format json|table]
 """
 
@@ -252,6 +253,128 @@ def _print_align_table(alignment_result, metadata_list):
         print()
 
 
+def cmd_fuse(args):
+    """Fuse two datasets end-to-end: ingest → interpret → align → fuse."""
+    provider = get_provider(args.provider)
+
+    ingestor_config = {
+        "ingestor": {
+            "max_file_size_mb": 500,
+            "sample_size": 10,
+            "temp_storage_path": "/tmp/helixforge",
+        }
+    }
+    interpreter_config = {
+        "interpreter": {
+            "embedding_model": "text-embedding-3-large",
+            "embedding_dimensions": 1536,
+            "llm_model": "gpt-4o",
+            "llm_temperature": 0.2,
+            "max_sample_values": 10,
+            "batch_size": 50,
+        }
+    }
+
+    ingestor = DataIngestorAgent(config=ingestor_config)
+    interpreter = MetadataInterpreterAgent(
+        config=interpreter_config, provider=provider
+    )
+
+    # Step 1: Ingest and interpret both files
+    metadata_list = []
+    dataframes = {}
+    for file_path in [args.file1, args.file2]:
+        try:
+            result = ingestor.ingest_file(file_path)
+        except Exception as e:
+            print(f"Error ingesting {file_path}: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        df = ingestor.get_dataframe(result.dataset_id)
+        metadata = interpreter.process(result.dataset_id, df)
+        metadata_list.append(metadata)
+        dataframes[result.dataset_id] = df
+
+    # Step 2: Align
+    from agents.ontology_alignment_agent import OntologyAlignmentAgent
+
+    alignment_config = {"alignment": {"similarity_threshold": 0.50}}
+    aligner = OntologyAlignmentAgent(config=alignment_config)
+    alignment_result = aligner.process(metadata_list)
+
+    # Step 3: Fuse
+    from agents.fusion_agent import FusionAgent
+    from models.schemas import JoinStrategy
+
+    # Map CLI strategy names to enum
+    strategy_map = {
+        "auto": JoinStrategy.AUTO,
+        "exact": JoinStrategy.EXACT_KEY,
+        "semantic": JoinStrategy.SEMANTIC_SIMILARITY,
+    }
+    strategy = strategy_map.get(args.strategy, JoinStrategy.AUTO)
+
+    output_path = args.output or "/tmp/helixforge"
+    import os
+    output_dir = os.path.dirname(output_path) or "."
+
+    fusion_config = {
+        "fusion": {
+            "default_join_strategy": strategy.value,
+            "output_format": "csv",
+            "output_path": output_dir,
+            "imputation_method": "mean",
+        }
+    }
+    fuser = FusionAgent(config=fusion_config)
+
+    kwargs = {"join_strategy": strategy}
+    if args.key:
+        kwargs["key_column"] = args.key
+
+    fusion_result = fuser.process(dataframes, alignment_result, **kwargs)
+
+    # If user specified --output, copy to that path
+    fused_df = fuser.get_fused_dataframe(fusion_result.fused_dataset_id)
+    if args.output:
+        if args.output.endswith(".parquet"):
+            fused_df.to_parquet(args.output, index=False)
+        else:
+            fused_df.to_csv(args.output, index=False)
+        final_path = args.output
+    else:
+        final_path = fusion_result.storage_path
+
+    # Print summary
+    if args.format == "json":
+        output = {
+            "fused_dataset_id": fusion_result.fused_dataset_id,
+            "source_datasets": fusion_result.source_datasets,
+            "record_count": fusion_result.record_count,
+            "field_count": fusion_result.field_count,
+            "merged_fields": fusion_result.merged_fields,
+            "join_strategy": fusion_result.join_strategy.value,
+            "alignments_used": len(alignment_result.alignments),
+            "transformations": len(fusion_result.transformations_applied),
+            "imputation": fusion_result.imputation_summary.total_nulls_filled if fusion_result.imputation_summary else 0,
+            "output_path": final_path,
+        }
+        print(json.dumps(output, indent=2, default=str))
+    else:
+        print(f"\n  Fused Dataset")
+        print(f"  {'─' * 50}")
+        print(f"  Rows:       {fusion_result.record_count}")
+        print(f"  Columns:    {fusion_result.field_count} ({', '.join(fusion_result.merged_fields)})")
+        print(f"  Strategy:   {fusion_result.join_strategy.value}")
+        print(f"  Alignments: {len(alignment_result.alignments)} field mapping(s)")
+        if fusion_result.transformations_applied:
+            print(f"  Transforms: {len(fusion_result.transformations_applied)}")
+        if fusion_result.imputation_summary and fusion_result.imputation_summary.total_nulls_filled > 0:
+            print(f"  Imputed:    {fusion_result.imputation_summary.total_nulls_filled} null(s) filled")
+        print(f"  Output:     {final_path}")
+        print()
+
+
 def cmd_ingest(args):
     """Ingest a dataset and print a JSON summary."""
     file_path = args.file
@@ -339,6 +462,33 @@ def main():
         help="Similarity threshold for alignment (default: 0.50)"
     )
 
+    # fuse command
+    fuse_parser = subparsers.add_parser(
+        "fuse", help="Fuse two datasets into a single merged file"
+    )
+    fuse_parser.add_argument("file1", help="Path to the first dataset file")
+    fuse_parser.add_argument("file2", help="Path to the second dataset file")
+    fuse_parser.add_argument(
+        "--key", default=None,
+        help="Column name to use as join key (default: auto-detect)"
+    )
+    fuse_parser.add_argument(
+        "--strategy", choices=["auto", "exact", "semantic"], default="auto",
+        help="Join strategy (default: auto)"
+    )
+    fuse_parser.add_argument(
+        "--output", default=None,
+        help="Output file path (default: auto-generated in /tmp)"
+    )
+    fuse_parser.add_argument(
+        "--format", choices=["json", "table"], default="table",
+        help="Summary output format (default: table)"
+    )
+    fuse_parser.add_argument(
+        "--provider", choices=["mock", "openai"], default="mock",
+        help="LLM provider for embeddings (default: mock)"
+    )
+
     # describe command
     describe_parser = subparsers.add_parser(
         "describe", help="Describe a dataset's fields with semantic labels"
@@ -365,6 +515,8 @@ def main():
         cmd_describe(args)
     elif args.command == "align":
         cmd_align(args)
+    elif args.command == "fuse":
+        cmd_fuse(args)
 
 
 if __name__ == "__main__":
