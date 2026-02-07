@@ -1,7 +1,7 @@
 """Pydantic models for HelixForge.
 
 This module defines all data schemas used across the system including
-ingestion results, metadata, alignments, fusion results, and insights.
+ingestion results, metadata, alignments, and fusion results.
 """
 
 from datetime import datetime
@@ -67,48 +67,6 @@ class ImputationMethod(str, Enum):
     MODE = "mode"
     KNN = "knn"
     MODEL = "model"
-
-
-class DistributionType(str, Enum):
-    """Distribution types for numeric fields."""
-    NORMAL = "normal"
-    SKEWED = "skewed"
-    BIMODAL = "bimodal"
-    UNIFORM = "uniform"
-
-
-class FindingType(str, Enum):
-    """Types of insights/findings."""
-    CORRELATION = "correlation"
-    OUTLIER = "outlier"
-    CLUSTER = "cluster"
-    TREND = "trend"
-
-
-class Severity(str, Enum):
-    """Severity levels for findings."""
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-
-
-class VisualizationType(str, Enum):
-    """Types of visualizations."""
-    CORRELATION_MATRIX = "correlation_matrix"
-    SCATTER = "scatter"
-    HISTOGRAM = "histogram"
-    BOXPLOT = "boxplot"
-    LINE = "line"
-    BAR = "bar"
-
-
-class ProvenanceOperation(str, Enum):
-    """Provenance operation types."""
-    INGEST = "ingest"
-    ALIGN = "align"
-    TRANSFORM = "transform"
-    IMPUTE = "impute"
-    FUSE = "fuse"
 
 
 # Layer 1: Data Ingestor
@@ -218,9 +176,6 @@ class AlignmentConfig(BaseModel):
     exact_match_threshold: float = Field(default=0.98)
     synonym_threshold: float = Field(default=0.90)
     max_alignments_per_field: int = Field(default=3)
-    vector_store: str = Field(default="weaviate")
-    graph_store: str = Field(default="neo4j")
-    graph_uri: str = Field(default="neo4j://localhost:7687")
     conflict_resolution: str = Field(default="highest_similarity")
 
 
@@ -281,171 +236,6 @@ class FusionConfig(BaseModel):
     output_path: str = Field(default="./data/fused/")
 
 
-# Layer 5: Insight Generator
-
-class FieldStatistics(BaseModel):
-    """Statistics for a single field."""
-    mean: Optional[float] = None
-    std: Optional[float] = None
-    min: Optional[float] = None
-    max: Optional[float] = None
-    median: Optional[float] = None
-    q1: Optional[float] = None
-    q3: Optional[float] = None
-    null_count: int = 0
-    unique_count: int = 0
-    distribution_type: Optional[DistributionType] = None
-
-
-class DatasetStatistics(BaseModel):
-    """Statistics for entire dataset."""
-    record_count: int
-    field_count: int
-    field_stats: Dict[str, FieldStatistics]
-
-
-class CorrelationPair(BaseModel):
-    """Correlation between two fields."""
-    field_a: str
-    field_b: str
-    coefficient: float = Field(..., ge=-1, le=1)
-    p_value: float
-    significant: bool
-
-
-class CorrelationMatrix(BaseModel):
-    """Correlation analysis results."""
-    method: str = Field(default="pearson")
-    correlations: List[CorrelationPair]
-    significant_pairs: List[CorrelationPair] = Field(default_factory=list)
-
-
-class OutlierReport(BaseModel):
-    """Outlier detection results."""
-    method: str
-    total_outliers: int
-    outliers_by_field: Dict[str, int]
-    outlier_records: List[int] = Field(default_factory=list, description="Row indices")
-
-
-class ClusteringResult(BaseModel):
-    """Clustering analysis results."""
-    algorithm: str
-    n_clusters: int
-    cluster_sizes: List[int]
-    silhouette_score: Optional[float] = None
-    cluster_labels: List[int] = Field(default_factory=list)
-
-
-class Finding(BaseModel):
-    """A single insight finding."""
-    finding_id: str
-    type: FindingType
-    severity: Severity
-    description: str
-    supporting_data: Dict[str, Any] = Field(default_factory=dict)
-    visualization_ref: Optional[str] = None
-
-
-class Visualization(BaseModel):
-    """A generated visualization."""
-    viz_id: str
-    type: VisualizationType
-    title: str
-    file_path: str
-    format: str = Field(default="png")
-
-
-class InsightResult(BaseModel):
-    """Complete insight generation result."""
-    insight_id: str
-    fused_dataset_id: str
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
-    statistics: DatasetStatistics
-    correlations: Optional[CorrelationMatrix] = None
-    outliers: Optional[OutlierReport] = None
-    clusters: Optional[ClusteringResult] = None
-    narrative_summary: Optional[str] = None
-    key_findings: List[Finding] = Field(default_factory=list)
-    visualizations: List[Visualization] = Field(default_factory=list)
-    export_paths: Dict[str, str] = Field(default_factory=dict)
-
-
-class InsightConfig(BaseModel):
-    """Configuration for Insight Generator Agent."""
-    llm_model: str = Field(default="gpt-4o")
-    correlation_method: str = Field(default="pearson")
-    correlation_significance_threshold: float = Field(default=0.05)
-    outlier_method: str = Field(default="iqr")
-    outlier_iqr_multiplier: float = Field(default=1.5)
-    clustering_algorithm: str = Field(default="kmeans")
-    clustering_k_range: List[int] = Field(default=[2, 10])
-    visualization_format: str = Field(default="plotly")
-    visualization_dpi: int = Field(default=150)
-    export_formats: List[str] = Field(default=["html", "pdf"])
-    output_path: str = Field(default="./outputs/insights/")
-
-
-# Layer 6: Provenance Tracker
-
-class FieldOrigin(BaseModel):
-    """Origin of a field."""
-    source_file: str
-    source_column: str
-    source_column_index: int
-    dataset_id: str
-    ingested_at: datetime
-    content_hash: str
-
-
-class TransformationRecord(BaseModel):
-    """Record of a transformation step."""
-    step_id: str
-    operation: ProvenanceOperation
-    input_fields: List[str]
-    output_field: str
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-    agent: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    confidence_delta: float = Field(default=0.0)
-
-
-class ProvenanceTrace(BaseModel):
-    """Complete provenance trace for a field."""
-    trace_id: str
-    field: str
-    fused_dataset_id: str
-    lineage_depth: int
-    origins: List[FieldOrigin]
-    transformations: List[TransformationRecord]
-    confidence: float = Field(..., ge=0, le=1)
-    traced_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-class ProvenanceReport(BaseModel):
-    """Complete provenance report for a dataset."""
-    report_id: str
-    fused_dataset_id: str
-    total_fields: int
-    fields_with_complete_provenance: int
-    coverage_percentage: float
-    traces: List[ProvenanceTrace]
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
-    format: str = Field(default="json")
-
-
-class ProvenanceConfig(BaseModel):
-    """Configuration for Provenance Tracker Agent."""
-    graph_store: str = Field(default="neo4j")
-    graph_uri: str = Field(default="neo4j://localhost:7687")
-    graph_user: str = Field(default="neo4j")
-    graph_password: str = Field(default="")
-    json_ld_context: str = Field(default="https://www.w3.org/ns/prov")
-    report_format: str = Field(default="html")
-    report_output_path: str = Field(default="./outputs/provenance/")
-    confidence_decay_per_step: float = Field(default=0.02)
-
-
 # API Request/Response Models
 
 class AlignmentRequest(BaseModel):
@@ -461,26 +251,6 @@ class FusionRequest(BaseModel):
     join_strategy: Optional[JoinStrategy] = None
     imputation_method: Optional[ImputationMethod] = None
     output_format: str = Field(default="parquet")
-
-
-class InsightRequest(BaseModel):
-    """Request to generate insights."""
-    fused_dataset_id: str
-    analysis_types: List[str] = Field(
-        default=["correlations", "outliers", "clusters"]
-    )
-    generate_visualizations: bool = Field(default=True)
-    generate_narrative: bool = Field(default=True)
-    export_formats: List[str] = Field(default=["html", "pdf", "json"])
-
-
-class HealthStatus(BaseModel):
-    """System health status."""
-    status: str = Field(default="healthy")
-    database: bool = Field(default=True)
-    vector_store: bool = Field(default=True)
-    graph_store: bool = Field(default=True)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ErrorResponse(BaseModel):

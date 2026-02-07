@@ -70,18 +70,6 @@ async def align_datasets(request: AlignmentRequest):
         # Store result
         state.setdefault("alignments", {})[result.alignment_job_id] = result
 
-        # Record provenance
-        provenance = state.get("provenance")
-        if provenance:
-            for alignment in result.alignments:
-                provenance.record_alignment(
-                    source_dataset=alignment.source_dataset,
-                    source_field=alignment.source_field,
-                    target_dataset=alignment.target_dataset,
-                    target_field=alignment.target_field,
-                    similarity=alignment.similarity
-                )
-
         return result
 
     except Exception as e:

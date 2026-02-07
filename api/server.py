@@ -12,7 +12,7 @@ import yaml
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import alignment, datasets, fusion, insights, provenance
+from api.routes import alignment, datasets, fusion
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -56,22 +56,17 @@ async def lifespan(app: FastAPI):
     from agents.metadata_interpreter_agent import MetadataInterpreterAgent
     from agents.ontology_alignment_agent import OntologyAlignmentAgent
     from agents.fusion_agent import FusionAgent
-    from agents.insight_generator_agent import InsightGeneratorAgent
-    from agents.provenance_tracker_agent import ProvenanceTrackerAgent
 
     app_state["ingestor"] = DataIngestorAgent(config)
     app_state["interpreter"] = MetadataInterpreterAgent(config)
     app_state["aligner"] = OntologyAlignmentAgent(config)
     app_state["fusion"] = FusionAgent(config)
-    app_state["insight"] = InsightGeneratorAgent(config)
-    app_state["provenance"] = ProvenanceTrackerAgent(config)
 
     # Storage for datasets and results
     app_state["datasets"] = {}
     app_state["metadata"] = {}
     app_state["alignments"] = {}
     app_state["fused"] = {}
-    app_state["insights"] = {}
 
     logger.info("HelixForge API server started successfully")
 
@@ -79,8 +74,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down HelixForge API server")
-    if "provenance" in app_state:
-        app_state["provenance"].close()
 
 
 # OpenAPI tags metadata
@@ -91,19 +84,11 @@ tags_metadata = [
     },
     {
         "name": "Alignment",
-        "description": "Align schemas across multiple datasets using semantic similarity and ontology matching.",
+        "description": "Align schemas across multiple datasets using semantic similarity.",
     },
     {
         "name": "Fusion",
         "description": "Merge aligned datasets using various join strategies with transformation and imputation.",
-    },
-    {
-        "name": "Insights",
-        "description": "Generate statistical analysis, correlations, clustering, and visualizations from fused data.",
-    },
-    {
-        "name": "Provenance",
-        "description": "Track and query data lineage throughout the pipeline from source to insight.",
     },
 ]
 
@@ -117,23 +102,15 @@ Transform heterogeneous datasets into unified insights through intelligent data 
 
 ## Features
 
-- **Multi-format Ingestion**: CSV, JSON, Parquet, Excel, SQL databases, REST APIs
+- **Multi-format Ingestion**: CSV, JSON, Parquet, Excel
 - **Semantic Schema Alignment**: AI-powered field matching across datasets
 - **Intelligent Fusion**: Multiple join strategies with conflict resolution
-- **Automated Insights**: Statistical analysis, correlations, clustering
-- **Full Provenance**: Track data lineage from source to insight
 
 ## Quick Start
 
 1. Upload datasets via `/datasets/upload`
 2. Align schemas via `/align/datasets`
 3. Fuse data via `/fuse/execute`
-4. Generate insights via `/insights/generate`
-5. Query provenance via `/trace/lineage`
-
-## Authentication
-
-Set the `X-API-Key` header for authenticated endpoints (when enabled).
     """,
     version="1.0.0",
     lifespan=lifespan,
@@ -174,94 +151,14 @@ app.add_middleware(
 app.include_router(datasets.router, prefix="/datasets", tags=["Datasets"])
 app.include_router(alignment.router, prefix="/align", tags=["Alignment"])
 app.include_router(fusion.router, prefix="/fuse", tags=["Fusion"])
-app.include_router(insights.router, prefix="/insights", tags=["Insights"])
-app.include_router(provenance.router, prefix="/trace", tags=["Provenance"])
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    from models.schemas import HealthStatus
-
-    # Check database connection
-    database_healthy = False
-    try:
-        config = app_state.get("config", {})
-        db_config = config.get("database", {})
-        if db_config.get("uri"):
-            import sqlalchemy
-            engine = sqlalchemy.create_engine(db_config["uri"])
-            with engine.connect() as conn:
-                conn.execute(sqlalchemy.text("SELECT 1"))
-            database_healthy = True
-        else:
-            # No database configured, consider healthy
-            database_healthy = True
-    except Exception:
-        database_healthy = False
-
-    # Check vector store (Weaviate) connection
-    vector_store_healthy = False
-    try:
-        config = app_state.get("config", {})
-        vector_config = config.get("vector_store", {})
-        if vector_config.get("url"):
-            import urllib.request
-            req = urllib.request.Request(
-                f"{vector_config['url']}/v1/.well-known/ready",
-                method="GET"
-            )
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                vector_store_healthy = resp.status == 200
-        else:
-            # No vector store configured, consider healthy
-            vector_store_healthy = True
-    except Exception:
-        vector_store_healthy = False
-
-    # Check graph store (Neo4j) connection
-    graph_store_healthy = False
-    try:
-        config = app_state.get("config", {})
-        graph_config = config.get("provenance", {})
-        if graph_config.get("graph_uri"):
-            from neo4j import GraphDatabase
-            driver = GraphDatabase.driver(
-                graph_config["graph_uri"],
-                auth=(graph_config.get("graph_user"), graph_config.get("graph_password"))
-                if graph_config.get("graph_password") else None
-            )
-            driver.verify_connectivity()
-            driver.close()
-            graph_store_healthy = True
-        else:
-            # No graph store configured, consider healthy
-            graph_store_healthy = True
-    except Exception:
-        graph_store_healthy = False
-
-    # Determine overall status
-    all_healthy = database_healthy and vector_store_healthy and graph_store_healthy
-    status = "healthy" if all_healthy else "degraded"
-
-    return HealthStatus(
-        status=status,
-        database=database_healthy,
-        vector_store=vector_store_healthy,
-        graph_store=graph_store_healthy
-    )
-
-
-@app.get("/metrics")
-async def metrics():
-    """Prometheus metrics endpoint."""
-    from fastapi.responses import Response
-    from utils.metrics import get_metrics, get_metrics_content_type
-
-    return Response(
-        content=get_metrics(),
-        media_type=get_metrics_content_type()
-    )
+    return {
+        "status": "healthy",
+    }
 
 
 @app.get("/")
