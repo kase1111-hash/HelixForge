@@ -131,12 +131,73 @@ def _print_table(metadata, ingest_result):
     print()
 
 
+def cmd_ingest(args):
+    """Ingest a dataset and print a JSON summary."""
+    file_path = args.file
+    output_format = args.format
+
+    ingestor_config = {
+        "ingestor": {
+            "max_file_size_mb": 500,
+            "sample_size": 10,
+            "temp_storage_path": "/tmp/helixforge",
+        }
+    }
+    ingestor = DataIngestorAgent(config=ingestor_config)
+
+    try:
+        result = ingestor.ingest_file(file_path, dataset_id=args.dataset_id)
+    except Exception as e:
+        print(f"Error ingesting {file_path}: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    output = {
+        "dataset_id": result.dataset_id,
+        "source": result.source,
+        "source_type": result.source_type.value,
+        "row_count": result.row_count,
+        "columns": result.schema_fields,
+        "dtypes": result.dtypes,
+        "content_hash": result.content_hash,
+        "encoding": result.encoding,
+        "storage_path": result.storage_path,
+    }
+
+    if output_format == "json":
+        print(json.dumps(output, indent=2, default=str))
+    else:
+        print(f"\n  Dataset ID: {result.dataset_id}")
+        print(f"  Source:     {result.source}")
+        print(f"  Format:     {result.source_type.value}")
+        print(f"  Rows:       {result.row_count}")
+        print(f"  Columns:    {', '.join(result.schema_fields)}")
+        print(f"  Hash:       {result.content_hash[:16]}...")
+        if result.encoding:
+            print(f"  Encoding:   {result.encoding}")
+        print(f"  Stored at:  {result.storage_path}")
+        print()
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="helixforge",
         description="HelixForge - Cross-Dataset Insight Synthesizer",
     )
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # ingest command
+    ingest_parser = subparsers.add_parser(
+        "ingest", help="Ingest a dataset file and print summary"
+    )
+    ingest_parser.add_argument("file", help="Path to the dataset file (csv, json, parquet, xlsx)")
+    ingest_parser.add_argument(
+        "--format", choices=["json", "table"], default="json",
+        help="Output format (default: json)"
+    )
+    ingest_parser.add_argument(
+        "--dataset-id", default=None,
+        help="Custom dataset ID (default: auto-generated UUID)"
+    )
 
     # describe command
     describe_parser = subparsers.add_parser(
@@ -158,7 +219,9 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    if args.command == "describe":
+    if args.command == "ingest":
+        cmd_ingest(args)
+    elif args.command == "describe":
         cmd_describe(args)
 
 
