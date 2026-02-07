@@ -275,6 +275,62 @@ class FusionRequest(BaseModel):
     output_format: str = Field(default="parquet")
 
 
+# Layer 5: Insight Analysis
+
+class FieldStatistics(BaseModel):
+    """Descriptive statistics for a single numeric field."""
+    field_name: str
+    count: int
+    mean: float
+    std: float
+    min: float
+    q1: float
+    median: float
+    q3: float
+    max: float
+    null_count: int = 0
+    unique_count: int = 0
+
+
+class CorrelationPair(BaseModel):
+    """A pair of correlated fields."""
+    field_a: str
+    field_b: str
+    coefficient: float
+    p_value: Optional[float] = None
+
+
+class OutlierInfo(BaseModel):
+    """Outlier detection results for a single field."""
+    field_name: str
+    outlier_count: int
+    lower_bound: float
+    upper_bound: float
+    outlier_indices: List[int] = Field(default_factory=list)
+
+
+class InsightResult(BaseModel):
+    """Result of statistical analysis."""
+    analysis_id: str
+    source_description: str
+    record_count: int
+    field_count: int
+    statistics: List[FieldStatistics] = Field(default_factory=list)
+    correlations: List[CorrelationPair] = Field(default_factory=list)
+    outliers: List[OutlierInfo] = Field(default_factory=list)
+    analyzed_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class InsightConfig(BaseModel):
+    """Configuration for Insight Agent."""
+    correlation_method: str = Field(default="pearson")
+    correlation_threshold: float = Field(default=0.5)
+    outlier_iqr_multiplier: float = Field(default=1.5)
+    include_stats: bool = Field(default=True)
+    include_correlations: bool = Field(default=True)
+    include_outliers: bool = Field(default=True)
+
+
 class ErrorResponse(BaseModel):
     """Standard error response."""
     error: str
