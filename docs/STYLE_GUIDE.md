@@ -18,7 +18,7 @@ This document defines coding standards for the HelixForge project to ensure cons
 ### General Guidelines
 
 - Follow [PEP 8](https://peps.python.org/pep-0008/) for Python code style
-- Maximum line length: **100 characters**
+- Maximum line length: **120 characters** (configured in `pyproject.toml`)
 - Use **4 spaces** for indentation (no tabs)
 - Use **UTF-8** encoding for all source files
 
@@ -178,7 +178,7 @@ Functions:
 
 ### Custom Exceptions
 
-Define domain-specific exceptions in `utils/exceptions.py`:
+Define domain-specific exceptions in `utils/errors.py`:
 
 ```python
 class HelixForgeError(Exception):
@@ -427,19 +427,20 @@ Closes #42
 
 ```bash
 # Install development dependencies
-pip install -r requirements-dev.txt
+make install-dev
 
 # Linting
-ruff check .
+make lint
 
 # Formatting
-ruff format .
+make format
 
 # Type checking
-mypy .
+make typecheck
 
 # Testing
-pytest --cov=. --cov-report=html
+make test          # All tests
+make test-cov      # With coverage report
 ```
 
 ### Pre-commit Hooks

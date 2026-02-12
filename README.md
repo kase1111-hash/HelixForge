@@ -74,24 +74,25 @@ HelixForge transforms heterogeneous datasets with unique schemas, vocabularies, 
 
 4. **Set environment variables**
    ```bash
+   cp .env.example .env
+   # Edit .env and set your OpenAI API key:
+   # OPENAI_API_KEY=sk-your-api-key-here
+   ```
+
+   Or export directly:
+   ```bash
    export OPENAI_API_KEY="your-api-key"
-   export NEO4J_PASSWORD="password"
-   export DB_PASSWORD="password"
    ```
 
 ### Running with Docker
 
-Start the full stack with Docker Compose:
+Start the API with Docker Compose:
 
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
-This starts:
-- HelixForge API on port 8000
-- PostgreSQL on port 5432
-- Neo4j on ports 7474 (browser) and 7687 (bolt)
-- Weaviate on port 8080
+This starts the HelixForge API on port 8000. To use external data stores (PostgreSQL, Neo4j, Weaviate), configure their connection details in `config.yaml` or environment variables and run them separately.
 
 ### Running Locally
 
@@ -103,20 +104,36 @@ uvicorn api.server:app --host 0.0.0.0 --port 8000 --reload
 
 ## Usage
 
-### Upload a Dataset
+### CLI
+
+HelixForge includes a command-line interface for common operations:
+
+```bash
+python cli.py ingest <file>                    # Ingest a dataset
+python cli.py describe <file>                  # Describe fields with semantic labels
+python cli.py align <file1> <file2>            # Align schemas between datasets
+python cli.py fuse <file1> <file2>             # Merge two datasets
+python cli.py analyze <file>                   # Generate statistics and insights
+```
+
+All CLI commands support `--format json|table` and `--provider mock|openai` options.
+
+### REST API
+
+#### Upload a Dataset
 
 ```bash
 curl -X POST "http://localhost:8000/datasets/upload" \
   -F "file=@data/samples/clinical.csv"
 ```
 
-### Get Dataset Metadata
+#### Get Dataset Metadata
 
 ```bash
 curl "http://localhost:8000/datasets/{dataset_id}"
 ```
 
-### Align Datasets
+#### Align Datasets
 
 ```bash
 curl -X POST "http://localhost:8000/align" \
@@ -124,7 +141,7 @@ curl -X POST "http://localhost:8000/align" \
   -d '{"dataset_ids": ["id1", "id2"]}'
 ```
 
-### Fuse Datasets
+#### Fuse Datasets
 
 ```bash
 curl -X POST "http://localhost:8000/fuse" \
@@ -132,53 +149,52 @@ curl -X POST "http://localhost:8000/fuse" \
   -d '{"alignment_job_id": "job_123"}'
 ```
 
-### Generate Insights
-
-```bash
-curl -X POST "http://localhost:8000/insights/generate" \
-  -H "Content-Type: application/json" \
-  -d '{"fused_dataset_id": "fused_123", "generate_narrative": true}'
-```
-
 ## API Reference
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/datasets/` | List all datasets |
 | POST | `/datasets/upload` | Upload/register dataset |
 | GET | `/datasets/{id}` | Get dataset metadata |
 | GET | `/datasets/{id}/sample` | Get sample rows |
+| DELETE | `/datasets/{id}` | Delete a dataset |
+| GET | `/align/` | List all alignment jobs |
 | POST | `/align` | Trigger alignment job |
-| GET | `/alignments/{job_id}` | Get alignment result |
+| GET | `/align/{job_id}` | Get alignment result |
+| POST | `/align/{job_id}/validate/{alignment_id}` | Validate an alignment |
+| GET | `/fuse/` | List all fused datasets |
 | POST | `/fuse` | Run fusion pipeline |
-| GET | `/fused/{id}` | Get fused dataset info |
-| GET | `/fused/{id}/download` | Download fused dataset |
-| POST | `/insights/generate` | Generate insights |
-| GET | `/insights/{id}` | Get insight report |
-| GET | `/trace/{dataset_id}/{field}` | Get field provenance |
+| GET | `/fuse/{id}` | Get fused dataset info |
+| GET | `/fuse/{id}/download` | Download fused dataset |
+| GET | `/fuse/{id}/sample` | Get sample rows from fused dataset |
 | GET | `/health` | Health check |
+
+Interactive API docs are available at `/docs` (Swagger UI) and `/redoc` (ReDoc).
 
 ## Project Structure
 
 ```
 helixforge/
 ├── agents/                    # Core processing agents
-│   ├── data_ingestor_agent.py
-│   ├── metadata_interpreter_agent.py
-│   ├── ontology_alignment_agent.py
-│   ├── fusion_agent.py
-│   ├── insight_generator_agent.py
-│   └── provenance_tracker_agent.py
+│   ├── base_agent.py          # Abstract base class for all agents
+│   ├── data_ingestor_agent.py # Data ingestion from multiple sources
+│   ├── metadata_interpreter_agent.py  # Semantic field labeling
+│   ├── ontology_alignment_agent.py    # Cross-dataset schema alignment
+│   ├── fusion_agent.py        # Dataset merging and transformation
+│   └── insight_agent.py       # Statistical analysis and insights
 ├── api/                       # FastAPI application
-│   ├── routes/
-│   └── middleware/
+│   ├── server.py              # Main API server
+│   └── routes/                # API route handlers
 ├── utils/                     # Utility modules
-├── models/                    # Pydantic/SQLAlchemy models
+├── models/                    # Pydantic data models
 ├── tests/                     # Test suite
+├── cli.py                     # Command-line interface
 ├── data/                      # Data storage
 ├── outputs/                   # Generated reports
 ├── docs/                      # Documentation
 ├── config.yaml               # Configuration
 ├── requirements.txt          # Python dependencies
+├── Makefile                  # Build automation
 ├── Dockerfile
 └── docker-compose.yaml
 ```
@@ -226,20 +242,24 @@ fusion:
 ### Running Tests
 
 ```bash
-pytest --cov=. --cov-report=html
+make test           # Run all tests
+make test-unit      # Run unit tests only
+make test-int       # Run integration tests only
+make test-cov       # Run with coverage report
+```
+
+Or directly with pytest:
+```bash
+pytest tests/ -v --tb=short
 ```
 
 ### Code Quality
 
 ```bash
-# Linting
-ruff check .
-
-# Formatting
-ruff format .
-
-# Type checking
-mypy .
+make lint           # Run ruff linter
+make format         # Format code with ruff
+make typecheck      # Run mypy type checker
+make check          # Run lint + typecheck
 ```
 
 ## Documentation
