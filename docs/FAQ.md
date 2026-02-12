@@ -25,14 +25,19 @@ Yes, HelixForge uses OpenAI's GPT-4o for semantic field labeling and text-embedd
 ### How do I install HelixForge?
 ```bash
 # Clone the repository
-git clone https://github.com/helixforge/helixforge.git
-cd helixforge
+git clone https://github.com/kase1111-hash/HelixForge.git
+cd HelixForge
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
 
 # Set up environment
-export OPENAI_API_KEY=your-key-here
+cp .env.example .env
+# Edit .env and set your OpenAI API key
 
 # Run the server
 make run
@@ -42,15 +47,17 @@ make run
 ```bash
 docker compose up -d
 ```
-This starts HelixForge along with PostgreSQL, Neo4j, and Weaviate.
+This starts the HelixForge API on port 8000. External data stores (PostgreSQL, Neo4j, Weaviate) should be configured separately if needed.
 
 ### How do I configure HelixForge?
-Edit `config.yaml` or use environment-specific configs in the `config/` directory:
-- `config/development.yaml` - Local development settings
-- `config/staging.yaml` - Pre-production settings
-- `config/production.yaml` - Production settings
+Edit the root `config.yaml` file. You can also override any config setting via environment variables using the convention `HELIXFORGE_<SECTION>__<KEY>=value` (double underscore for nesting). See `.env.example` for details.
 
-Set `HELIXFORGE_ENV=production` to use production config.
+```bash
+# Examples:
+export HELIXFORGE_LLM__PROVIDER=openai
+export HELIXFORGE_API__PORT=8000
+export HELIXFORGE_LOGGING__LEVEL=DEBUG
+```
 
 ---
 
@@ -66,18 +73,17 @@ Or via the Swagger UI at `http://localhost:8000/docs`.
 
 ### How do I align two datasets?
 ```bash
-curl -X POST http://localhost:8000/align/datasets \
+curl -X POST http://localhost:8000/align \
   -H "Content-Type: application/json" \
   -d '{"dataset_ids": ["dataset-1", "dataset-2"]}'
 ```
 
 ### How do I merge aligned datasets?
 ```bash
-curl -X POST http://localhost:8000/fuse/execute \
+curl -X POST http://localhost:8000/fuse \
   -H "Content-Type: application/json" \
   -d '{
-    "dataset_ids": ["dataset-1", "dataset-2"],
-    "alignment_id": "alignment-123",
+    "alignment_job_id": "alignment-123",
     "join_strategy": "semantic_similarity"
   }'
 ```
@@ -92,10 +98,17 @@ curl -X POST http://localhost:8000/fuse/execute \
 | `concat` | Simple concatenation (union) |
 
 ### How do I generate insights?
+Insight generation is available via the CLI:
 ```bash
-curl -X POST http://localhost:8000/insights/generate \
-  -H "Content-Type: application/json" \
-  -d '{"fused_dataset_id": "fused-123"}'
+python cli.py analyze your-data.csv --stats --correlations --outliers
+```
+
+For programmatic use, import the InsightAgent directly:
+```python
+from agents.insight_agent import InsightAgent
+
+agent = InsightAgent(config={"insight": {}})
+result = agent.process(dataframe, source_description="my-data.csv")
 ```
 
 ---
@@ -178,22 +191,20 @@ result = ingestor.ingest_file("data.csv")
 ```
 
 ### Is there a Python SDK?
-The agents can be used as a Python library. Import from the `agents` package:
+The agents can be used as a Python library. Import each agent from its module:
 ```python
-from agents import (
-    DataIngestorAgent,
-    MetadataInterpreterAgent,
-    OntologyAlignmentAgent,
-    FusionAgent,
-    InsightGeneratorAgent,
-    ProvenanceTrackerAgent
-)
+from agents.data_ingestor_agent import DataIngestorAgent
+from agents.metadata_interpreter_agent import MetadataInterpreterAgent
+from agents.ontology_alignment_agent import OntologyAlignmentAgent
+from agents.fusion_agent import FusionAgent
+from agents.insight_agent import InsightAgent
 ```
 
 ### How do I extend HelixForge?
 1. **Custom transformations**: Add to `BUILTIN_TRANSFORMS` in `fusion_agent.py`
 2. **New data sources**: Implement `_ingest_*` method in `data_ingestor_agent.py`
-3. **Custom insights**: Add analysis methods to `insight_generator_agent.py`
+3. **Custom insights**: Add analysis methods to `insight_agent.py`
+4. **New agents**: Inherit from `BaseAgent` in `agents/base_agent.py`
 
 ---
 
@@ -209,7 +220,7 @@ There's no hard limit. Performance depends on:
 Yes, deploy multiple API instances behind a load balancer. All instances share the same databases.
 
 ### What's the maximum file size?
-Default: 100MB (configurable via `storage.max_file_size_mb`)
+Default: 500MB (configurable via `processing.max_file_size_mb` in `config.yaml`)
 
 For larger files:
 1. Use chunked ingestion
@@ -221,7 +232,7 @@ For larger files:
 ## Contributing
 
 ### How do I report bugs?
-Open an issue at: https://github.com/helixforge/helixforge/issues
+Open an issue at: https://github.com/kase1111-hash/HelixForge/issues
 
 ### How do I contribute code?
 1. Fork the repository

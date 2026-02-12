@@ -54,7 +54,7 @@ from utils.validation import (
 API authentication via `X-API-Key` header (when enabled):
 
 ```yaml
-# config/production.yaml
+# config.yaml
 security:
   api_key_required: true
 ```
@@ -69,7 +69,6 @@ security:
 
 - Passwords never logged
 - API keys stored in environment variables
-- `send_default_pii=False` in Sentry
 - Content hashes for data integrity
 
 ### 5. Rate Limiting
@@ -89,7 +88,6 @@ security:
 |---------|-----------|---------|
 | OpenAI  | Field names, sample values (5 rows) | Semantic labeling |
 | OpenAI  | Field names | Embedding generation |
-| Sentry  | Error traces (no PII) | Error tracking |
 
 ### What Data is NOT Sent
 
@@ -102,10 +100,9 @@ security:
 
 | Data Type | Storage Location | Encryption |
 |-----------|------------------|------------|
-| Raw files | Local filesystem / S3 | At-rest (configurable) |
-| Metadata  | PostgreSQL | Connection SSL |
-| Lineage   | Neo4j | Connection SSL |
-| Embeddings| Weaviate | Connection SSL |
+| Raw files | Local filesystem (`data/` directory) | At-rest (configurable) |
+| Metadata  | In-memory (PostgreSQL when configured) | Connection SSL |
+| Embeddings| In-memory (Weaviate when configured) | Connection SSL |
 
 ## Compliance Considerations
 
@@ -129,10 +126,10 @@ For healthcare data:
 
 Controls implemented:
 - [ ] Access control (API keys)
-- [x] Audit logging (structured logs)
+- [x] Audit logging (structured logs with correlation IDs)
 - [x] Data integrity (content hashing)
-- [x] Error tracking (Sentry)
-- [x] Monitoring (Prometheus)
+- [ ] Error tracking (planned)
+- [ ] Monitoring (planned)
 
 ## Secure Deployment Checklist
 
@@ -149,28 +146,23 @@ Controls implemented:
 ```bash
 # Required
 OPENAI_API_KEY=sk-...
-DB_PASSWORD=...
-GRAPH_PASSWORD=...
 
-# Optional
-SENTRY_DSN=...
-API_KEY=...
+# Optional (for external data stores)
+# DB_PASSWORD=...
+# GRAPH_PASSWORD=...
 ```
+
+See `.env.example` for the full list of configurable environment variables.
 
 ### Production Configuration
 
 ```yaml
-# config/production.yaml
-security:
-  api_key_required: true
-  rate_limit_per_minute: 100
+# config.yaml
+api:
+  cors_origins: ["https://your-domain.com"]
 
 logging:
   level: "WARNING"  # Reduce log verbosity
-
-error_tracking:
-  enabled: true
-  send_default_pii: false
 ```
 
 ## Vulnerability Reporting
@@ -199,7 +191,7 @@ Recommended scope for penetration testing:
 
 ## Incident Response
 
-1. **Detection**: Monitor error rates via Prometheus/Sentry
+1. **Detection**: Monitor error rates via application logs
 2. **Containment**: Disable affected endpoints
 3. **Eradication**: Patch vulnerability
 4. **Recovery**: Restore from clean state

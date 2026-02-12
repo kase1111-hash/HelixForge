@@ -63,7 +63,19 @@ HelixForge is a Cross-Dataset Insight Synthesizer that transforms heterogeneous 
 
 ## Agent Pipeline
 
-The 6-agent pipeline processes data through distinct stages:
+The core pipeline consists of 5 implemented agents (all inheriting from `BaseAgent` in `agents/base_agent.py`):
+
+| Agent | Module | Responsibility |
+|-------|--------|----------------|
+| DataIngestorAgent | `data_ingestor_agent.py` | Multi-format data ingestion |
+| MetadataInterpreterAgent | `metadata_interpreter_agent.py` | LLM-powered semantic field labeling |
+| OntologyAlignmentAgent | `ontology_alignment_agent.py` | Cross-dataset schema alignment |
+| FusionAgent | `fusion_agent.py` | Dataset merging with transformations |
+| InsightAgent | `insight_agent.py` | Statistical analysis and insights |
+
+> **Note:** The Provenance Tracker shown in the diagrams below represents planned functionality for full data lineage tracking via Neo4j. It is not yet implemented as a standalone agent.
+
+The pipeline processes data through distinct stages:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -330,12 +342,14 @@ Agents communicate via a publish/subscribe event system:
 │  (Replica)  │
 └─────────────┘
 
-Docker Compose Services:
-─────────────────────────
-  - helixforge-api    (FastAPI application)
-  - postgres          (PostgreSQL database)
-  - neo4j             (Graph database)
-  - weaviate          (Vector database)
+Docker Compose Services (current):
+───────────────────────────────────
+  - helixforge        (FastAPI application)
+
+Additional services (configure separately for production):
+  - PostgreSQL        (Metadata storage)
+  - Neo4j             (Graph/lineage storage)
+  - Weaviate          (Vector embeddings)
 ```
 
 ## Security Architecture
@@ -405,4 +419,4 @@ Docker Compose Services:
 - **Horizontal**: Multiple API server instances behind load balancer
 - **Vertical**: Configurable worker processes and batch sizes
 - **Data**: Partitioning support for large datasets
-- **Caching**: Redis integration for frequently accessed data
+- **Caching**: Embedding cache for frequently accessed fields (planned: Redis integration)
