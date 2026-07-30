@@ -11,7 +11,6 @@ different datasets using a multi-signal scoring pipeline:
 import uuid
 from typing import Any, Dict, FrozenSet, List, Optional, Set
 
-
 from agents.base_agent import BaseAgent
 from models.schemas import (
     AlignmentConfig,

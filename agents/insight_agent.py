@@ -11,7 +11,7 @@ Clustering uses scikit-learn. Narrative uses the LLMProvider protocol.
 """
 
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd

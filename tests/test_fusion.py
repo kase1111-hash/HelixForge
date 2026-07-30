@@ -5,9 +5,7 @@ specific row values, not just "result is not None" or "len > 0".
 """
 
 import os
-import tempfile
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -19,7 +17,6 @@ from models.schemas import (
     ImputationMethod,
     JoinStrategy,
 )
-
 
 # ------------------------------------------------------------------ #
 #  Helpers                                                             #
@@ -393,6 +390,7 @@ class TestSemanticJoin:
             join_strategy=JoinStrategy.SEMANTIC_SIMILARITY,
         )
         df = agent.get_fused_dataframe(result.fused_dataset_id)
+        assert df is not None
         # Alice and Bob should match; Eve and Frank should be unmatched
         assert result.record_count >= 3
 

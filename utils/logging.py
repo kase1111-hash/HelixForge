@@ -10,7 +10,6 @@ import sys
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-
 # Configure root logger
 _LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 _JSON_FORMAT = True
@@ -51,7 +50,7 @@ class StructuredFormatter(logging.Formatter):
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
 
-        return json.dumps(log_data)
+        return json.dumps(log_data, default=str)
 
 
 class StandardFormatter(logging.Formatter):

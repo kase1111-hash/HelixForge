@@ -3,10 +3,9 @@
 import pytest
 
 from agents.data_ingestor_agent import DataIngestorAgent
+from agents.fusion_agent import FusionAgent
 from agents.metadata_interpreter_agent import MetadataInterpreterAgent
 from agents.ontology_alignment_agent import OntologyAlignmentAgent
-from agents.fusion_agent import FusionAgent
-from models.schemas import JoinStrategy
 from utils.llm import MockProvider
 
 
@@ -200,6 +199,7 @@ class TestAPIIntegration:
     def test_client(self):
         """Create test client for API."""
         from fastapi.testclient import TestClient
+
         from api.server import app
         return TestClient(app)
 

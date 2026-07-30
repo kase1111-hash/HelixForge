@@ -38,7 +38,7 @@ help:
 # Python and pip
 PYTHON := python3
 PIP := pip3
-PYTEST := pytest
+PYTEST := $(PYTHON) -m pytest
 RUFF := ruff
 MYPY := mypy
 

@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from utils.errors import ConfigurationError
 
-
 # ------------------------------------------------------------------ #
 #  Pydantic models for each config section                            #
 # ------------------------------------------------------------------ #
