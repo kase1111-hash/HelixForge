@@ -11,8 +11,6 @@ import os
 import tempfile
 
 import pytest
-import yaml
-
 
 # ------------------------------------------------------------------ #
 #  Exception hierarchy                                                 #
@@ -158,7 +156,7 @@ class TestConfigValidation:
                 reset_config()
 
     def test_env_override_string(self, monkeypatch):
-        from utils.config import reset_config, load_config
+        from utils.config import load_config, reset_config
         reset_config()
         monkeypatch.setenv("HELIXFORGE_LLM__MODEL", "gpt-3.5-turbo")
         config = load_config()
@@ -166,7 +164,7 @@ class TestConfigValidation:
         reset_config()
 
     def test_env_override_int(self, monkeypatch):
-        from utils.config import reset_config, load_config
+        from utils.config import load_config, reset_config
         reset_config()
         monkeypatch.setenv("HELIXFORGE_API__PORT", "9000")
         config = load_config()
@@ -174,7 +172,7 @@ class TestConfigValidation:
         reset_config()
 
     def test_env_override_bool(self, monkeypatch):
-        from utils.config import reset_config, load_config
+        from utils.config import load_config, reset_config
         reset_config()
         monkeypatch.setenv("HELIXFORGE_LOGGING__LEVEL", "DEBUG")
         config = load_config()
@@ -189,7 +187,7 @@ class TestConfigValidation:
         reset_config()
 
     def test_reset_clears_cache(self):
-        from utils.config import reset_config, load_config
+        from utils.config import load_config, reset_config
         reset_config()
         c1 = load_config()
         reset_config()
@@ -207,8 +205,9 @@ class TestHealthCheck:
 
     @pytest.fixture
     def test_client(self):
-        from api.server import app
         from httpx import ASGITransport, AsyncClient
+
+        from api.server import app
         transport = ASGITransport(app=app)
         return AsyncClient(transport=transport, base_url="http://test")
 

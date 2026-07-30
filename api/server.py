@@ -56,9 +56,9 @@ async def lifespan(app: FastAPI):
 
     # Initialize agents
     from agents.data_ingestor_agent import DataIngestorAgent
+    from agents.fusion_agent import FusionAgent
     from agents.metadata_interpreter_agent import MetadataInterpreterAgent
     from agents.ontology_alignment_agent import OntologyAlignmentAgent
-    from agents.fusion_agent import FusionAgent
 
     app_state["ingestor"] = DataIngestorAgent(config)
     app_state["interpreter"] = MetadataInterpreterAgent(config)

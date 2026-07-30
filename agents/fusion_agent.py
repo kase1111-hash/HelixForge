@@ -29,7 +29,6 @@ from models.schemas import (
     TransformationLog,
 )
 
-
 # Built-in transformation templates
 BUILTIN_TRANSFORMS: Dict[str, Callable] = {
     "celsius_to_fahrenheit": lambda v: v * 9 / 5 + 32,

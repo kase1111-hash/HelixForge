@@ -96,11 +96,7 @@ class OpenAIProvider:
                 all_embeddings[original_idx] = data.embedding
 
         zero_vector = [0.0] * dimensions
-        for i in range(len(all_embeddings)):
-            if all_embeddings[i] is None:
-                all_embeddings[i] = zero_vector
-
-        return all_embeddings
+        return [emb if emb is not None else zero_vector for emb in all_embeddings]
 
     def complete(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Generate chat completion via OpenAI API."""

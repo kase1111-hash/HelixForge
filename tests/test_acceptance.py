@@ -4,16 +4,14 @@ These tests verify the complete user workflows as defined in the user stories.
 They test end-to-end functionality from the user's perspective.
 """
 
-import os
-import tempfile
 
 import pandas as pd
 import pytest
 
 from agents.data_ingestor_agent import DataIngestorAgent
+from agents.fusion_agent import FusionAgent
 from agents.metadata_interpreter_agent import MetadataInterpreterAgent
 from agents.ontology_alignment_agent import OntologyAlignmentAgent
-from agents.fusion_agent import FusionAgent
 from models.schemas import JoinStrategy
 from utils.llm import MockProvider
 
@@ -192,7 +190,7 @@ class TestUserStory3_SchemaAlignment:
     @pytest.fixture
     def two_metadata_results(self):
         """Create metadata for two similar datasets with orthogonal embeddings."""
-        from models.schemas import DatasetMetadata, FieldMetadata, DataType, SemanticType
+        from models.schemas import DatasetMetadata, DataType, FieldMetadata, SemanticType
 
         # Orthogonal embeddings so cosine similarity is meaningful
         emb_id = [1.0] * 512 + [0.0] * 512 + [0.0] * 512
@@ -305,7 +303,7 @@ class TestUserStory4_DatasetFusion:
     @pytest.fixture
     def sample_alignment(self):
         """Create a sample alignment result."""
-        from models.schemas import AlignmentResult, FieldAlignment, AlignmentType
+        from models.schemas import AlignmentResult, AlignmentType, FieldAlignment
 
         return AlignmentResult(
             alignment_job_id="test-alignment",

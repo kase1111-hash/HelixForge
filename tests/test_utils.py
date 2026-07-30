@@ -308,8 +308,9 @@ class TestEmbeddings:
 
     def test_normalize_vector(self):
         """Test vector normalization."""
-        from utils.embeddings import normalize_vector
         import numpy as np
+
+        from utils.embeddings import normalize_vector
 
         vec = [3.0, 4.0]
         result = normalize_vector(vec)
@@ -365,12 +366,14 @@ class TestLogging:
         logger = get_correlated_logger("test", "corr-123", "TestAgent")
         assert logger is not None
 
-    def test_log_event(self, caplog):
+    def test_log_event(self, capsys):
         """Test event logging."""
         from utils.logging import get_logger, log_event
 
         logger = get_logger("test_event", json_format=False)
         log_event(logger, "test.event", {"key": "value"}, "corr-123")
 
-        # Check that event was logged
-        assert "test.event" in caplog.text or len(caplog.records) > 0
+        # Loggers from get_logger don't propagate to root (so caplog can't
+        # see them); the handler writes to stdout, so capture that instead.
+        captured = capsys.readouterr()
+        assert "test.event" in captured.out

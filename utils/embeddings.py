@@ -108,11 +108,7 @@ def batch_embed(
 
     # Fill remaining None entries with zero vectors (for empty/whitespace texts)
     zero_vector = [0.0] * embedding_dimensions
-    for i in range(len(all_embeddings)):
-        if all_embeddings[i] is None:
-            all_embeddings[i] = zero_vector
-
-    return all_embeddings
+    return [emb if emb is not None else zero_vector for emb in all_embeddings]
 
 
 def cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:

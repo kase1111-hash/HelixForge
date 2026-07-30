@@ -7,10 +7,12 @@ requires-python = ">=3.10"
 [tool.ruff]
 line-length = 120
 target-version = "py310"
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ignore = ["E501"]
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["agents", "api", "models", "utils"]
 
 [tool.mypy]
